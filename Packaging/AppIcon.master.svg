@@ -1,0 +1,115 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="96" y1="72" x2="928" y2="952" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#075FFF"/>
+      <stop offset="0.54" stop-color="#1297FF"/>
+      <stop offset="1" stop-color="#32D7FF"/>
+    </linearGradient>
+
+    <radialGradient id="bgGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" transform="translate(258 178) rotate(34) scale(638 462)">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.28"/>
+      <stop offset="0.4" stop-color="#BDF7FF" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#BDF7FF" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="bgVignette" x1="512" y1="64" x2="512" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="0.62" stop-color="#0A58C7" stop-opacity="0"/>
+      <stop offset="1" stop-color="#052A73" stop-opacity="0.36"/>
+    </linearGradient>
+
+    <linearGradient id="paneFillBack" x1="72" y1="20" x2="894" y2="944" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3A495D"/>
+      <stop offset="0.42" stop-color="#283341"/>
+      <stop offset="1" stop-color="#171D26"/>
+    </linearGradient>
+
+    <linearGradient id="paneFillMid" x1="72" y1="20" x2="894" y2="944" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#40546B"/>
+      <stop offset="0.42" stop-color="#2A394A"/>
+      <stop offset="1" stop-color="#182029"/>
+    </linearGradient>
+
+    <linearGradient id="paneFillFront" x1="64" y1="16" x2="904" y2="952" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#405B74"/>
+      <stop offset="0.3" stop-color="#2A3949"/>
+      <stop offset="1" stop-color="#111920"/>
+    </linearGradient>
+
+    <linearGradient id="paneSheen" x1="480" y1="0" x2="480" y2="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="0.38" stop-color="#D9F9FF" stop-opacity="0.09"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <linearGradient id="paneShade" x1="480" y1="580" x2="480" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.24"/>
+    </linearGradient>
+
+    <linearGradient id="paneStrokeBack" x1="0" y1="0" x2="960" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E8FDFF" stop-opacity="0.60"/>
+      <stop offset="1" stop-color="#69D0FF" stop-opacity="0.26"/>
+    </linearGradient>
+
+    <linearGradient id="paneStrokeFront" x1="0" y1="0" x2="960" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F1FFFF" stop-opacity="0.88"/>
+      <stop offset="1" stop-color="#7CDBFF" stop-opacity="0.42"/>
+    </linearGradient>
+
+    <linearGradient id="paneInnerStroke" x1="0" y1="0" x2="960" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.02"/>
+    </linearGradient>
+
+    <linearGradient id="chevronFill" x1="391" y1="360" x2="620" y2="642" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#72E5FF"/>
+      <stop offset="0.54" stop-color="#9AF1FF"/>
+      <stop offset="1" stop-color="#F0FFFF"/>
+    </linearGradient>
+
+    <filter id="shadowBack" x="-160" y="-160" width="1280" height="1280" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="#04173D" flood-opacity="0.18"/>
+    </filter>
+
+    <filter id="shadowMid" x="-160" y="-160" width="1280" height="1280" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="30" stdDeviation="30" flood-color="#04183F" flood-opacity="0.24"/>
+    </filter>
+
+    <filter id="shadowFront" x="-180" y="-180" width="1320" height="1320" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="22" stdDeviation="18" flood-color="#072057" flood-opacity="0.22"/>
+      <feDropShadow dx="0" dy="42" stdDeviation="34" flood-color="#03132F" flood-opacity="0.26"/>
+    </filter>
+
+    <filter id="chevronGlow" x="320" y="296" width="384" height="436" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#7EEBFF" flood-opacity="0.34"/>
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#0D4AA3" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <g transform="translate(440 200) scale(0.50)" opacity="0.42" filter="url(#shadowBack)">
+    <rect x="0" y="0" width="960" height="960" rx="52" fill="url(#paneFillBack)"/>
+    <rect x="0" y="0" width="960" height="960" rx="52" fill="url(#paneSheen)"/>
+    <rect x="0" y="0" width="960" height="960" rx="52" fill="url(#paneShade)"/>
+    <rect x="2" y="2" width="956" height="956" rx="50" stroke="url(#paneStrokeBack)" stroke-width="4"/>
+    <rect x="12" y="12" width="936" height="936" rx="40" stroke="url(#paneInnerStroke)" stroke-width="2"/>
+  </g>
+
+  <g transform="translate(280 170) scale(0.625)" opacity="0.68" filter="url(#shadowMid)">
+    <rect x="0" y="0" width="960" height="960" rx="52" fill="url(#paneFillMid)"/>
+    <rect x="0" y="0" width="960" height="960" rx="52" fill="url(#paneSheen)"/>
+    <rect x="0" y="0" width="960" height="960" rx="52" fill="url(#paneShade)"/>
+    <rect x="2" y="2" width="956" height="956" rx="50" stroke="url(#paneStrokeBack)" stroke-width="4"/>
+    <rect x="12" y="12" width="936" height="936" rx="40" stroke="url(#paneInnerStroke)" stroke-width="2"/>
+  </g>
+
+  <g transform="translate(92 140) scale(0.76)" filter="url(#shadowFront)">
+    <rect x="0" y="0" width="960" height="960" rx="52" fill="url(#paneFillFront)"/>
+    <rect x="0" y="0" width="960" height="960" rx="52" fill="url(#paneSheen)"/>
+    <rect x="0" y="0" width="960" height="960" rx="52" fill="url(#paneShade)"/>
+    <rect x="2" y="2" width="956" height="956" rx="50" stroke="url(#paneStrokeFront)" stroke-width="4"/>
+    <rect x="12" y="12" width="936" height="936" rx="40" stroke="url(#paneInnerStroke)" stroke-width="2"/>
+    <path d="M415.882 350.449L631.882 478.449A39 39 0 0 1 631.882 545.551L415.882 673.551A39 39 0 0 1 376.118 606.449L535.5 512L376.118 417.551A39 39 0 0 1 415.882 350.449Z" fill="url(#chevronFill)" filter="url(#chevronGlow)"/>
+    <path d="M415.882 350.449L631.882 478.449A39 39 0 0 1 631.882 545.551L415.882 673.551A39 39 0 0 1 376.118 606.449L535.5 512L376.118 417.551A39 39 0 0 1 415.882 350.449Z" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="6" stroke-linejoin="round"/>
+  </g>
+</svg>

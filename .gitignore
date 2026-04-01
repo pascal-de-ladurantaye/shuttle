@@ -1,0 +1,23 @@
+# Swift / SwiftPM
+.build/
+.swiftpm/
+
+# Xcode / macOS
+.DS_Store
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.orig
+
+# Local dependencies / generated artifacts
+Vendor/
+GhosttyKit.xcframework/
+dist/
+tmp/
