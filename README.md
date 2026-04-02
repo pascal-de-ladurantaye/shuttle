@@ -194,6 +194,8 @@ try new|new-session
 app bootstrap-hint
 ```
 
+`try new` and `try new-session` are Shuttle-native commands. They do not invoke the real `try` CLI; instead Shuttle reproduces the simple behavior it supports today for new try workspace creation: create a dated directory under `tries_root`, register it as a try project/workspace, and optionally bootstrap the first session there.
+
 Public CLI/session-model handles now use scoped refs for sessions, panes, and tabs (for example `workspace:5/session:3`, `workspace:5/session:3/pane:2`, and `workspace:5/session:3/tab:1`), while raw refs like `session:12` are still accepted for compatibility. Workspace/session/pane/tab/layout mutations now prefer the app-owned local control socket when the app is running, with live open/runtime flows auto-launching Shuttle.app when needed; `SHUTTLE_APP_PATH` can override which `.app` bundle launch-if-needed targets. `--json` now emits a versioned snake_case success/error envelope (`schema_version`, `ok`, `type`, `data`, `error`) for machine-readable automation, `shuttle --help --json` / `shuttle control schema --json` expose the CLI schema, and runtime automation now returns cursor tokens so `tab read|wait --after-cursor <token>` can capture incremental output. For runtime automation, `tab send` inserts text by default; add `--submit` to press Return after inserting it.
 
 ## Documentation
@@ -239,7 +241,7 @@ Implemented today:
 - Shuttle still creates a session root for metadata, restore state, and optional session-root guides
 - creating a session does not create a Shuttle-managed symlink or worktree by default
 - new project-backed sessions start directly in their lone source checkout
-- `try new` and `try new-session` flows for try-project creation and first-session bootstrap
+- `try new` and `try new-session` flows for simple try-project creation and first-session bootstrap; these are Shuttle-native flows, not wrappers around the real `try` CLI
 - optional root-level `AGENTS.md` seeding for app-created sessions so agents can discover the active checkout and any project-specific guidance files
 
 ### Native app experience
