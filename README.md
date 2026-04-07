@@ -15,6 +15,12 @@ Shuttle v1 ships in a focused project-first model:
 For deeper implementation details, see `docs/ARCHITECTURE.md`.
 For GhosttyKit dependency and integration notes, see `docs/GHOSTTYKIT_SETUP.md`.
 
+## Quick preview
+
+A single Shuttle window gives you project/workspace navigation, live embedded terminals, and enough room for diffs, resources, and agent context.
+
+<img src="docs/shuttle-preview.png" alt="Shuttle showing a project-first macOS workspace UI with a workspace and session sidebar on the left, a large diff/editor area in the middle, and resources plus terminals on the right." width="1600" />
+
 ## Requirements
 
 - macOS 14+
