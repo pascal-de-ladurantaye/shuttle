@@ -2,6 +2,8 @@
 
 This is maintainer-facing documentation for Shuttle's embedded terminal dependency.
 
+Shuttle's Ghostty terminal embedding work was heavily inspired by [CMUX](https://github.com/manaflow-ai/cmux).
+
 Shuttle uses `GhosttyKit.xcframework` (from the [manaflow-ai/ghostty](https://github.com/manaflow-ai/ghostty) fork) for GPU-accelerated terminal rendering via `libghostty`.
 
 ## Quick setup

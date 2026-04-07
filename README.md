@@ -21,6 +21,10 @@ A single Shuttle window gives you project/workspace navigation, live embedded te
 
 <img src="docs/shuttle-preview.png" alt="Shuttle showing a project-first macOS workspace UI with a workspace and session sidebar on the left, a large diff/editor area in the middle, and resources plus terminals on the right." width="1600" />
 
+## Acknowledgements
+
+Shuttle was heavily inspired by [CMUX](https://github.com/manaflow-ai/cmux). In particular, Shuttle's Ghostty terminal embedding work builds on ideas explored there.
+
 ## Requirements
 
 - macOS 14+
