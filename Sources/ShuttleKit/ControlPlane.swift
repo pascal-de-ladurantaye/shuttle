@@ -64,6 +64,8 @@ public enum ShuttleControlCommand: Hashable, Sendable, Codable {
     case tabSend(sessionToken: String, tabToken: String, text: String, submit: Bool)
     case tabRead(sessionToken: String, tabToken: String, mode: ShuttleTabReadMode, maxLines: Int, afterCursorToken: String?)
     case tabWait(sessionToken: String, tabToken: String, text: String, mode: ShuttleTabReadMode, maxLines: Int, timeoutMilliseconds: Int, afterCursorToken: String?)
+    case tabMarkAttention(sessionToken: String, tabToken: String, message: String?)
+    case tabClearAttention(sessionToken: String, tabToken: String)
 
     public var name: String {
         switch self {
@@ -107,6 +109,10 @@ public enum ShuttleControlCommand: Hashable, Sendable, Codable {
             return "tab.read"
         case .tabWait:
             return "tab.wait"
+        case .tabMarkAttention:
+            return "tab.mark_attention"
+        case .tabClearAttention:
+            return "tab.clear_attention"
         }
     }
 
@@ -128,7 +134,9 @@ public enum ShuttleControlCommand: Hashable, Sendable, Codable {
              .paneResize,
              .tabNew,
              .tabClose,
-             .tabSend:
+             .tabSend,
+             .tabMarkAttention,
+             .tabClearAttention:
             return true
         }
     }
@@ -155,6 +163,8 @@ public enum ShuttleControlCommand: Hashable, Sendable, Codable {
             ShuttleControlCommand.tabSend(sessionToken: "", tabToken: "", text: "", submit: false).name,
             ShuttleControlCommand.tabRead(sessionToken: "", tabToken: "", mode: .scrollback, maxLines: 200, afterCursorToken: nil).name,
             ShuttleControlCommand.tabWait(sessionToken: "", tabToken: "", text: "", mode: .scrollback, maxLines: 200, timeoutMilliseconds: 30_000, afterCursorToken: nil).name,
+            ShuttleControlCommand.tabMarkAttention(sessionToken: "", tabToken: "", message: nil).name,
+            ShuttleControlCommand.tabClearAttention(sessionToken: "", tabToken: "").name,
         ]
     }
 }
@@ -305,6 +315,16 @@ public struct ShuttleControlCommandService: Sendable {
             return .sessionBundle(try await store.closeTab(sessionToken: sessionToken, tabRawID: tab.rawID))
         case .tabSend, .tabRead, .tabWait:
             throw ShuttleError.unsupported("Runtime tab send/read commands require the Shuttle app control plane")
+        case .tabMarkAttention(let sessionToken, let tabToken, let message):
+            let existing = try await store.sessionBundle(token: sessionToken)
+            let tab = try Self.resolveTab(in: existing, token: tabToken)
+            try await store.markTabAttention(sessionToken: sessionToken, tabRawID: tab.rawID, message: message)
+            return .sessionBundle(try await store.sessionBundle(token: sessionToken))
+        case .tabClearAttention(let sessionToken, let tabToken):
+            let existing = try await store.sessionBundle(token: sessionToken)
+            let tab = try Self.resolveTab(in: existing, token: tabToken)
+            try await store.clearTabAttention(sessionToken: sessionToken, tabRawID: tab.rawID)
+            return .sessionBundle(try await store.sessionBundle(token: sessionToken))
         }
     }
 
@@ -846,7 +866,7 @@ public extension ShuttleError {
         case ShuttleError.configInvalid("").code:
             self = .configInvalid(message)
         case ShuttleError.notFound(entity: "", token: "").code:
-            self = .notFound(entity: "Remote", token: message)
+            self = .notFound(entity: "Remote", token: Self.parseRemoteNotFoundToken(from: message))
         case ShuttleError.database("").code:
             self = .database(message)
         case ShuttleError.unsupported("").code:
@@ -854,6 +874,17 @@ public extension ShuttleError {
         default:
             self = .io(message)
         }
+    }
+
+    /// Extracts the token from a remote `notFound` message like "Session 'workspace:1/session:1' was not found" → "workspace:1/session:1".
+    /// Falls back to the full message if the pattern doesn't match.
+    private static func parseRemoteNotFoundToken(from message: String) -> String {
+        // Pattern: "<Entity> '<token>' was not found"
+        guard let openQuote = message.firstIndex(of: "'"),
+              let closeQuote = message[message.index(after: openQuote)...].firstIndex(of: "'") else {
+            return message
+        }
+        return String(message[message.index(after: openQuote)..<closeQuote])
     }
 
     var isLikelyControlPlaneUnavailable: Bool {

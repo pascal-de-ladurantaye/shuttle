@@ -11,6 +11,7 @@ Shuttle v1 ships in a focused project-first model:
 - a local control-plane CLI with launch-if-needed live session/pane/tab mutations
 - best-effort relaunch restore
 - agent-friendly session context, including optional `AGENTS.md` seeding for session roots
+- tab attention indicators driven by CLI (`shuttle tab mark-attention`) or terminal bell, with auto-clear on focus and sidebar rollup
 
 For deeper implementation details, see `docs/ARCHITECTURE.md`.
 For GhosttyKit dependency and integration notes, see `docs/GHOSTTYKIT_SETUP.md`.
@@ -176,7 +177,7 @@ SHUTTLE_PANE_ID         SHUTTLE_SESSION_ROOT
 SHUTTLE_TAB_ID
 ```
 
-`SHUTTLE_SESSION_ID`, `SHUTTLE_PANE_ID`, and `SHUTTLE_TAB_ID` use Shuttle's scoped handle format (for example `workspace:5/session:3`, `workspace:5/session:3/pane:2`, and `workspace:5/session:3/tab:1`).
+`SHUTTLE_SESSION_ID`, `SHUTTLE_PANE_ID`, and `SHUTTLE_TAB_ID` use Shuttle's scoped handle format (for example `workspace:5/session:3`, `workspace:5/session:3/pane:2`, and `workspace:5/session:3/tab:1`). CLI commands auto-resolve these env vars when `--session`, `--pane`, or `--tab` flags are omitted, so commands like `shuttle tab mark-attention` just work from inside a Shuttle terminal.
 
 When scrollback replay is active during restore, Shuttle also uses an internal replay file environment variable:
 
@@ -198,7 +199,7 @@ workspace list|show|open
 session list|show|context|open|reopen|new|ensure|rename|close|ensure-closed
 layout list|show|apply|ensure-applied|save-current
 pane list|show|split|resize
-tab list|new|close|send|read|wait
+tab list|new|close|send|read|wait|mark-attention|clear-attention
 control ping|capabilities|schema|socket-path
 try new|new-session
 app bootstrap-hint
@@ -309,6 +310,12 @@ Implemented today:
   - fallback tabs reopen at the lone checkout for a project-backed session or in `~` for a global session
 - inactive-pane dimming and focused-tab/focused-pane tracking
 - shell integration helpers for more reliable cwd/title checkpointing
+- tab attention indicators:
+  - `shuttle tab mark-attention` / `shuttle tab clear-attention` via CLI with env-var auto-resolution
+  - orange dot overlay on non-focused tabs needing attention
+  - auto-clear when the user selects/focuses the tab
+  - numeric attention badge on session and workspace sidebar rows
+  - terminal bell (`\a`) marks non-focused tabs as needing attention (default on, configurable in Settings)
 
 ### Restore and checkpointing
 Implemented today:
@@ -381,4 +388,3 @@ Not implemented yet:
 - external layout file import/validation for CLI-driven session creation
 - broader restore across multiple windows/sessions beyond the selected session snapshot
 - detached terminal execution after the app quits
-- external notifications/agent hooks beyond the current in-app toast notifications, `AGENTS.md` seeding, and context env vars

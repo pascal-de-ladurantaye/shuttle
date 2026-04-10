@@ -126,8 +126,8 @@ Current purpose of each file:
 
 - `state.sqlite`
   - durable record of projects, workspaces, sessions, session-projects, panes, and tabs
-  - current schema version: `5`
-  - schema mismatch handling is destructive reset/rebuild, not in-place migration
+  - current schema version: `7`
+  - schema mismatch handling uses additive migrations when possible (e.g., v5→v6→v7), falling back to destructive reset/rebuild for unrecognized versions
 - `session-snapshot.json`
   - selected-session relaunch snapshot
 - `terminal-restoration-scrollback/tab-<raw-id>.txt`
@@ -262,6 +262,8 @@ Shuttle persists a real pane tree and tab list.
 - `command`
 - `runtime_status`
 - `position_index`
+- `needs_attention`
+- `attention_message`
 
 Public IDs are hierarchical scoped refs:
 
@@ -445,7 +447,7 @@ Current command coverage includes:
 - session bundle/open/new/ensure/rename/close/ensure-closed
 - layout apply/ensure-applied/save-current
 - pane split/resize
-- tab new/close/send/read/wait
+- tab new/close/send/read/wait/mark-attention/clear-attention
 - ping/capabilities
 
 Launch-if-needed behavior:

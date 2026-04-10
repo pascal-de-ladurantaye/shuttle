@@ -622,7 +622,7 @@ private struct CLI {
             }
         case "show":
             let args = Array(arguments.dropFirst())
-            guard let paneToken = try parseOptionalValue("--pane", in: args) else {
+            guard let paneToken = resolvePaneToken(explicit: try parseOptionalValue("--pane", in: args)) else {
                 throw ShuttleError.invalidArguments("pane show requires --pane <pane>")
             }
             let sessionToken = try requiredSessionToken(
@@ -666,7 +666,7 @@ private struct CLI {
                   let direction = SplitDirection(rawValue: directionToken) else {
                 throw ShuttleError.invalidArguments("pane split <left|right|up|down> --session <session> --pane <pane> [--source-tab <tab>]")
             }
-            guard let paneToken = try parseOptionalValue("--pane", in: args) else {
+            guard let paneToken = resolvePaneToken(explicit: try parseOptionalValue("--pane", in: args)) else {
                 throw ShuttleError.invalidArguments("pane split requires --pane <pane>")
             }
             let sessionToken = try requiredSessionToken(
@@ -707,7 +707,7 @@ private struct CLI {
             }
         case "resize":
             let args = Array(arguments.dropFirst())
-            guard let paneToken = try parseOptionalValue("--pane", in: args) else {
+            guard let paneToken = resolvePaneToken(explicit: try parseOptionalValue("--pane", in: args)) else {
                 throw ShuttleError.invalidArguments("pane resize requires --pane <pane> --ratio <ratio>")
             }
             guard let ratioToken = try parseOptionalValue("--ratio", in: args),
@@ -777,12 +777,13 @@ private struct CLI {
                 let panesByRawID = Dictionary(uniqueKeysWithValues: bundle.panes.map { ($0.rawID, $0) })
                 for tab in tabs {
                     let paneLabel = panesByRawID[tab.paneID]?.id ?? Pane.makeRef(tab.paneID)
-                    print("\(tab.id)  pane=\(paneLabel)  \(tab.title)  cwd=\(tab.cwd)")
+                    let attentionSuffix = tab.needsAttention ? "  ⚠ attention" + (tab.attentionMessage.map { ": \($0)" } ?? "") : ""
+                    print("\(tab.id)  pane=\(paneLabel)  \(tab.title)  cwd=\(tab.cwd)\(attentionSuffix)")
                 }
             }
         case "new":
             let args = Array(arguments.dropFirst())
-            guard let paneToken = try parseOptionalValue("--pane", in: args) else {
+            guard let paneToken = resolvePaneToken(explicit: try parseOptionalValue("--pane", in: args)) else {
                 throw ShuttleError.invalidArguments("tab new requires --pane <pane>")
             }
             let sessionToken = try requiredSessionToken(
@@ -818,7 +819,7 @@ private struct CLI {
             }
         case "close":
             let args = Array(arguments.dropFirst())
-            guard let tabToken = try parseOptionalValue("--tab", in: args) else {
+            guard let tabToken = resolveTabToken(explicit: try parseOptionalValue("--tab", in: args)) else {
                 throw ShuttleError.invalidArguments("tab close requires --tab <tab>")
             }
             let sessionToken = try requiredSessionToken(
@@ -847,7 +848,7 @@ private struct CLI {
             }
         case "send":
             let args = Array(arguments.dropFirst())
-            guard let tabToken = try parseOptionalValue("--tab", in: args) else {
+            guard let tabToken = resolveTabToken(explicit: try parseOptionalValue("--tab", in: args)) else {
                 throw ShuttleError.invalidArguments("tab send requires --tab <tab> plus --text <text>, --submit, or both")
             }
             let text = try parseOptionalValue("--text", in: args) ?? ""
@@ -884,7 +885,7 @@ private struct CLI {
             }
         case "read":
             let args = Array(arguments.dropFirst())
-            guard let tabToken = try parseOptionalValue("--tab", in: args) else {
+            guard let tabToken = resolveTabToken(explicit: try parseOptionalValue("--tab", in: args)) else {
                 throw ShuttleError.invalidArguments("tab read requires --tab <tab>")
             }
             let sessionToken = try requiredSessionToken(
@@ -914,7 +915,7 @@ private struct CLI {
             }
         case "wait":
             let args = Array(arguments.dropFirst())
-            guard let tabToken = try parseOptionalValue("--tab", in: args) else {
+            guard let tabToken = resolveTabToken(explicit: try parseOptionalValue("--tab", in: args)) else {
                 throw ShuttleError.invalidArguments("tab wait requires --tab <tab> --text <text>")
             }
             guard let expectedText = try parseOptionalValue("--text", in: args) else {
@@ -947,6 +948,52 @@ private struct CLI {
                 shuttleCLIPrintJSONEnvelope(type: "tab_wait", data: result)
             } else {
                 print(result.text, terminator: result.text.hasSuffix("\n") || result.text.isEmpty ? "" : "\n")
+            }
+        case "mark-attention":
+            let args = Array(arguments.dropFirst())
+            guard let tabToken = resolveTabToken(explicit: try parseOptionalValue("--tab", in: args)) else {
+                throw ShuttleError.invalidArguments("tab mark-attention requires --tab <tab> or SHUTTLE_TAB_ID")
+            }
+            let sessionToken = try requiredSessionToken(
+                explicit: try parseOptionalValue("--session", in: args),
+                childToken: tabToken,
+                childLabel: "tab"
+            )
+            let message = try parseOptionalValue("--message", in: args)
+            let updated = try await controlSessionBundle(
+                command: .tabMarkAttention(sessionToken: sessionToken, tabToken: tabToken, message: message),
+                store: store,
+                launchIfNeeded: true,
+                allowLocalFallback: true
+            )
+            if json {
+                shuttleCLIPrintJSONEnvelope(type: "session", data: updated)
+            } else {
+                print("Marked \(tabToken) as needing attention")
+                if let message {
+                    print("message: \(message)")
+                }
+            }
+        case "clear-attention":
+            let args = Array(arguments.dropFirst())
+            guard let tabToken = resolveTabToken(explicit: try parseOptionalValue("--tab", in: args)) else {
+                throw ShuttleError.invalidArguments("tab clear-attention requires --tab <tab> or SHUTTLE_TAB_ID")
+            }
+            let sessionToken = try requiredSessionToken(
+                explicit: try parseOptionalValue("--session", in: args),
+                childToken: tabToken,
+                childLabel: "tab"
+            )
+            let updated = try await controlSessionBundle(
+                command: .tabClearAttention(sessionToken: sessionToken, tabToken: tabToken),
+                store: store,
+                launchIfNeeded: true,
+                allowLocalFallback: true
+            )
+            if json {
+                shuttleCLIPrintJSONEnvelope(type: "session", data: updated)
+            } else {
+                print("Cleared attention on \(tabToken)")
             }
         default:
             throw ShuttleError.invalidCommand("Unknown tab subcommand: \(command)")
@@ -1225,6 +1272,18 @@ private struct CLI {
         }
     }
 
+    private func envSessionToken() -> String? {
+        ProcessInfo.processInfo.environment["SHUTTLE_SESSION_ID"]
+    }
+
+    private func envTabToken() -> String? {
+        ProcessInfo.processInfo.environment["SHUTTLE_TAB_ID"]
+    }
+
+    private func envPaneToken() -> String? {
+        ProcessInfo.processInfo.environment["SHUTTLE_PANE_ID"]
+    }
+
     private func requiredSessionToken(explicit: String?, childToken: String?, childLabel: String) throws -> String {
         if let explicit {
             return explicit
@@ -1232,7 +1291,18 @@ private struct CLI {
         if let childToken, let derived = scopedParentSessionToken(from: childToken) {
             return derived
         }
+        if let envToken = envSessionToken() {
+            return envToken
+        }
         throw ShuttleError.invalidArguments("Missing --session <session> or fully scoped \(childLabel) handle")
+    }
+
+    private func resolveTabToken(explicit: String?) -> String? {
+        explicit ?? envTabToken()
+    }
+
+    private func resolvePaneToken(explicit: String?) -> String? {
+        explicit ?? envPaneToken()
     }
 
     private func scopedParentSessionToken(from token: String) -> String? {
@@ -1402,6 +1472,8 @@ private struct CLI {
                 CLICommandSchema(path: "tab send", summary: "Insert or paste text into a live tab and optionally submit it", responseType: "tab_send", idempotency: "non_idempotent_mutation", transport: "socket_launch_if_needed", arguments: [], options: ["--session <session>", "--tab <tab>", "--text <text>", "--submit"]),
                 CLICommandSchema(path: "tab read", summary: "Capture screen or scrollback text from a live tab", responseType: "tab_read", idempotency: "idempotent_read", transport: "socket_launch_if_needed", arguments: [], options: ["--session <session>", "--tab <tab>", "--mode <screen|scrollback>", "--lines <n>", "--after-cursor <token>"]),
                 CLICommandSchema(path: "tab wait", summary: "Wait until text appears in a live tab and return the captured output", responseType: "tab_wait", idempotency: "idempotent_read", transport: "socket_launch_if_needed", arguments: [], options: ["--session <session>", "--tab <tab>", "--text <text>", "--mode <screen|scrollback>", "--lines <n>", "--timeout-ms <ms>", "--after-cursor <token>"]),
+                CLICommandSchema(path: "tab mark-attention", summary: "Mark a tab as needing attention", responseType: "session", idempotency: "idempotent_mutation", transport: "socket_or_local", arguments: [], options: ["--session <session>", "--tab <tab>", "--message <text>"]),
+                CLICommandSchema(path: "tab clear-attention", summary: "Clear the attention flag on a tab", responseType: "session", idempotency: "idempotent_mutation", transport: "socket_or_local", arguments: [], options: ["--session <session>", "--tab <tab>"]),
                 CLICommandSchema(path: "control ping", summary: "Check control-plane reachability", responseType: "control_pong", idempotency: "idempotent_read", transport: "socket", arguments: [], options: []),
                 CLICommandSchema(path: "control capabilities", summary: "List control protocol capabilities and supported commands", responseType: "control_capabilities", idempotency: "idempotent_read", transport: "socket", arguments: [], options: []),
                 CLICommandSchema(path: "control schema", summary: "Dump the machine-readable CLI schema", responseType: "cli_schema", idempotency: "idempotent_read", transport: nil, arguments: [], options: []),
@@ -1462,6 +1534,8 @@ private struct CLI {
             "tab send": "tab send --tab <tab> [--session <session>] [--text <text>] [--submit]",
             "tab read": "tab read --tab <tab> [--session <session>] [--mode screen|scrollback] [--lines <n>] [--after-cursor <token>]",
             "tab wait": "tab wait --tab <tab> --text <text> [--session <session>] [--mode screen|scrollback] [--lines <n>] [--timeout-ms <ms>] [--after-cursor <token>]",
+            "tab mark-attention": "tab mark-attention [--tab <tab>] [--session <session>] [--message <text>]",
+            "tab clear-attention": "tab clear-attention [--tab <tab>] [--session <session>]",
             "control ping": "control ping",
             "control capabilities": "control capabilities",
             "control schema": "control schema [--json]",
@@ -1551,7 +1625,7 @@ private struct CLI {
               session list|show|context|open|reopen|new|ensure|rename|close|ensure-closed
               layout list|show|apply|ensure-applied|save-current
               pane list|show|split|resize
-              tab list|new|close|send|read|wait
+              tab list|new|close|send|read|wait|mark-attention|clear-attention
               control ping|capabilities|schema|socket-path
               try new|new-session
               app bootstrap-hint
@@ -1563,6 +1637,8 @@ private struct CLI {
               tab send --tab <tab> [--text <text>] [--submit]
               tab read --tab <tab> [--mode screen|scrollback] [--lines <n>] [--after-cursor <token>]
               tab wait --tab <tab> --text <text> [--mode screen|scrollback] [--lines <n>] [--timeout-ms <ms>] [--after-cursor <token>]
+              tab mark-attention [--tab <tab>] [--session <session>] [--message <text>]
+              tab clear-attention [--tab <tab>] [--session <session>]
 
             Global flags:
               --json          machine-readable success/error envelopes

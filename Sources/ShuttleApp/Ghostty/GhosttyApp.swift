@@ -283,12 +283,30 @@ final class GhosttyRuntime: ObservableObject {
             }
             DispatchQueue.main.async {
                 Self.deliverDesktopNotification(title: title, body: body)
+                var userInfo: [String: Any] = ["title": title, "body": body]
+                if let surfaceId {
+                    userInfo["surfaceId"] = surfaceId
+                }
+                NotificationCenter.default.post(
+                    name: .ghosttySurfaceDesktopNotification,
+                    object: nil,
+                    userInfo: userInfo
+                )
             }
             return true
 
         case GHOSTTY_ACTION_RING_BELL:
             DispatchQueue.main.async {
                 NSSound.beep()
+                var userInfo: [String: Any] = [:]
+                if let surfaceId {
+                    userInfo["surfaceId"] = surfaceId
+                }
+                NotificationCenter.default.post(
+                    name: .ghosttySurfaceBellRang,
+                    object: nil,
+                    userInfo: userInfo
+                )
             }
             return true
 
@@ -457,4 +475,6 @@ extension Notification.Name {
     static let ghosttySurfaceDidClose = Notification.Name("ghosttySurfaceDidClose")
     static let ghosttySurfaceTitleChanged = Notification.Name("ghosttySurfaceTitleChanged")
     static let ghosttySurfacePwdChanged = Notification.Name("ghosttySurfacePwdChanged")
+    static let ghosttySurfaceBellRang = Notification.Name("ghosttySurfaceBellRang")
+    static let ghosttySurfaceDesktopNotification = Notification.Name("ghosttySurfaceDesktopNotification")
 }

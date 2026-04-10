@@ -386,6 +386,8 @@ public struct Tab: Identifiable, Hashable, Sendable, Codable {
     public var runtimeStatus: RuntimeStatus
     public var positionIndex: Int
     public var tabNumber: Int
+    public var needsAttention: Bool
+    public var attentionMessage: String?
 
     public init(
         rawID: Int64,
@@ -400,7 +402,9 @@ public struct Tab: Identifiable, Hashable, Sendable, Codable {
         envJSON: String?,
         runtimeStatus: RuntimeStatus,
         positionIndex: Int,
-        tabNumber: Int
+        tabNumber: Int,
+        needsAttention: Bool = false,
+        attentionMessage: String? = nil
     ) {
         self.rawID = rawID
         self.id = Self.makeScopedRef(workspaceID: workspaceID, sessionNumber: sessionNumber, tabNumber: tabNumber)
@@ -416,6 +420,8 @@ public struct Tab: Identifiable, Hashable, Sendable, Codable {
         self.runtimeStatus = runtimeStatus
         self.positionIndex = positionIndex
         self.tabNumber = tabNumber
+        self.needsAttention = needsAttention
+        self.attentionMessage = attentionMessage
     }
 
     public var runtimeKey: String { Self.makeRef(rawID) }

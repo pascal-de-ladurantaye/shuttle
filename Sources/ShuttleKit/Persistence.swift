@@ -158,7 +158,7 @@ public final class PersistenceStore {
         try database.transaction(body)
     }
 
-    private static let schemaVersion = 6
+    private static let schemaVersion = 7
     private static let globalWorkspaceName = "Global"
     private static let globalWorkspaceSlug = "global"
     private static let globalWorkspaceAliases: Set<String> = ["global", "scratchpad"]
@@ -182,6 +182,9 @@ public final class PersistenceStore {
                 try createSchemaIfNeeded()
             case 5:
                 try migrateSchemaV5ToV6()
+                try migrateSchemaV6ToV7()
+            case 6:
+                try migrateSchemaV6ToV7()
             default:
                 try resetSchema()
                 try createSchemaIfNeeded()
@@ -207,6 +210,15 @@ public final class PersistenceStore {
             ALTER TABLE session_projects DROP COLUMN created_branch_name;
             ALTER TABLE session_projects DROP COLUMN merge_status;
             ALTER TABLE session_projects DROP COLUMN dirty;
+            """
+        )
+    }
+
+    private func migrateSchemaV6ToV7() throws {
+        try database.execute(
+            """
+            ALTER TABLE tabs ADD COLUMN needs_attention INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE tabs ADD COLUMN attention_message TEXT;
             """
         )
     }
@@ -351,6 +363,8 @@ public final class PersistenceStore {
               env_json TEXT,
               runtime_status TEXT NOT NULL,
               position_index INTEGER NOT NULL,
+              needs_attention INTEGER NOT NULL DEFAULT 0,
+              attention_message TEXT,
               FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
               FOREIGN KEY (pane_id) REFERENCES panes(id) ON DELETE CASCADE,
               FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
@@ -811,6 +825,44 @@ public final class PersistenceStore {
         }
     }
 
+    public func markTabAttention(tabID: Int64, message: String?) throws {
+        let statement = try database.prepare(
+            "UPDATE tabs SET needs_attention = 1, attention_message = ? WHERE id = ?"
+        )
+        defer { sqlite3_finalize(statement) }
+        try bind(message, at: 1, in: statement)
+        try bind(tabID, at: 2, in: statement)
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw ShuttleError.database(String(cString: sqlite3_errmsg(database.handle)))
+        }
+    }
+
+    public func clearTabAttention(tabID: Int64) throws {
+        let statement = try database.prepare(
+            "UPDATE tabs SET needs_attention = 0, attention_message = NULL WHERE id = ?"
+        )
+        defer { sqlite3_finalize(statement) }
+        try bind(tabID, at: 1, in: statement)
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw ShuttleError.database(String(cString: sqlite3_errmsg(database.handle)))
+        }
+    }
+
+    /// Returns a dictionary of session raw IDs to the count of tabs that need attention in that session.
+    public func attentionCountsBySession() throws -> [Int64: Int] {
+        let statement = try database.prepare(
+            "SELECT session_id, COUNT(*) FROM tabs WHERE needs_attention = 1 GROUP BY session_id"
+        )
+        defer { sqlite3_finalize(statement) }
+        var result: [Int64: Int] = [:]
+        while sqlite3_step(statement) == SQLITE_ROW {
+            let sessionID = sqlite3_column_int64(statement, 0)
+            let count = Int(sqlite3_column_int64(statement, 1))
+            result[sessionID] = count
+        }
+        return result
+    }
+
     public func splitPane(paneID: Int64, direction: SplitDirection, sourceTabID: Int64? = nil) throws -> SessionBundle {
         let sessionID = try database.transaction { () -> Int64 in
             guard let targetPane = try pane(id: paneID) else {
@@ -1092,7 +1144,7 @@ public final class PersistenceStore {
         }
         let tabNumber = try nextTabNumber(sessionID: targetPane.sessionID)
         let statement = try database.prepare(
-            "INSERT INTO tabs (session_id, pane_id, tab_number, title, cwd, project_id, command, env_json, runtime_status, position_index) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO tabs (session_id, pane_id, tab_number, title, cwd, project_id, command, env_json, runtime_status, position_index, needs_attention, attention_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)"
         )
         defer { sqlite3_finalize(statement) }
 
@@ -1178,7 +1230,7 @@ public final class PersistenceStore {
     public func listTabs(sessionID: Int64) throws -> [Tab] {
         let statement = try database.prepare(
             """
-            SELECT tabs.id, tabs.session_id, sessions.workspace_id, sessions.session_number, tabs.pane_id, tabs.tab_number, tabs.title, tabs.cwd, tabs.project_id, tabs.command, tabs.env_json, tabs.runtime_status, tabs.position_index
+            SELECT tabs.id, tabs.session_id, sessions.workspace_id, sessions.session_number, tabs.pane_id, tabs.tab_number, tabs.title, tabs.cwd, tabs.project_id, tabs.command, tabs.env_json, tabs.runtime_status, tabs.position_index, tabs.needs_attention, tabs.attention_message
             FROM tabs
             INNER JOIN sessions ON sessions.id = tabs.session_id
             WHERE tabs.session_id = ?
@@ -1398,7 +1450,7 @@ public final class PersistenceStore {
 
     private func tab(id: Int64) throws -> Tab? {
         let statement = try database.prepare(
-            "SELECT tabs.id, tabs.session_id, sessions.workspace_id, sessions.session_number, tabs.pane_id, tabs.tab_number, tabs.title, tabs.cwd, tabs.project_id, tabs.command, tabs.env_json, tabs.runtime_status, tabs.position_index FROM tabs INNER JOIN sessions ON sessions.id = tabs.session_id WHERE tabs.id = ? LIMIT 1"
+            "SELECT tabs.id, tabs.session_id, sessions.workspace_id, sessions.session_number, tabs.pane_id, tabs.tab_number, tabs.title, tabs.cwd, tabs.project_id, tabs.command, tabs.env_json, tabs.runtime_status, tabs.position_index, tabs.needs_attention, tabs.attention_message FROM tabs INNER JOIN sessions ON sessions.id = tabs.session_id WHERE tabs.id = ? LIMIT 1"
         )
         defer { sqlite3_finalize(statement) }
         try bind(id, at: 1, in: statement)
@@ -1431,7 +1483,7 @@ public final class PersistenceStore {
 
     private func tabsForPaneID(_ paneID: Int64) throws -> [Tab] {
         let statement = try database.prepare(
-            "SELECT tabs.id, tabs.session_id, sessions.workspace_id, sessions.session_number, tabs.pane_id, tabs.tab_number, tabs.title, tabs.cwd, tabs.project_id, tabs.command, tabs.env_json, tabs.runtime_status, tabs.position_index FROM tabs INNER JOIN sessions ON sessions.id = tabs.session_id WHERE tabs.pane_id = ? ORDER BY tabs.position_index ASC, tabs.id ASC"
+            "SELECT tabs.id, tabs.session_id, sessions.workspace_id, sessions.session_number, tabs.pane_id, tabs.tab_number, tabs.title, tabs.cwd, tabs.project_id, tabs.command, tabs.env_json, tabs.runtime_status, tabs.position_index, tabs.needs_attention, tabs.attention_message FROM tabs INNER JOIN sessions ON sessions.id = tabs.session_id WHERE tabs.pane_id = ? ORDER BY tabs.position_index ASC, tabs.id ASC"
         )
         defer { sqlite3_finalize(statement) }
         try bind(paneID, at: 1, in: statement)
@@ -1812,7 +1864,9 @@ public final class PersistenceStore {
             envJSON: text(at: 10, from: statement),
             runtimeStatus: RuntimeStatus(rawValue: text(at: 11, from: statement) ?? RuntimeStatus.placeholder.rawValue) ?? .placeholder,
             positionIndex: Int(sqlite3_column_int64(statement, 12)),
-            tabNumber: Int(sqlite3_column_int64(statement, 5))
+            tabNumber: Int(sqlite3_column_int64(statement, 5)),
+            needsAttention: sqlite3_column_int64(statement, 13) != 0,
+            attentionMessage: text(at: 14, from: statement)
         )
     }
 

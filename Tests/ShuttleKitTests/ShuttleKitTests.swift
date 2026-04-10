@@ -359,6 +359,56 @@ final class ShuttleKitTests: XCTestCase {
         XCTAssertEqual(updated.session.id, bundle.session.id)
     }
 
+    func testControlCommandServiceMarksAndClearsTabAttention() async throws {
+        let harness = try TestHarness()
+        defer { harness.cleanup() }
+
+        try harness.writeConfig(
+            sessionRoot: harness.rootURL.appendingPathComponent("session-root", isDirectory: true).path,
+            triesRoot: harness.rootURL.appendingPathComponent("tries", isDirectory: true).path,
+            projectRoots: [harness.projectsRootURL.path]
+        )
+
+        let alphaURL = harness.projectsRootURL.appendingPathComponent("alpha", isDirectory: true)
+        try FileManager.default.createDirectory(at: alphaURL, withIntermediateDirectories: true)
+
+        let store = try WorkspaceStore(paths: harness.paths)
+        _ = try await store.scanProjects()
+        let bundle = try await store.createSession(workspaceToken: "alpha", name: "dev", layoutName: nil)
+        let tab = try XCTUnwrap(bundle.tabs.first)
+        let service = ShuttleControlCommandService(store: store)
+
+        // Mark attention
+        let markValue = try await service.execute(
+            .tabMarkAttention(sessionToken: bundle.session.id, tabToken: tab.id, message: "Build done")
+        )
+        guard case .sessionBundle(let markedBundle) = markValue else {
+            return XCTFail("Expected session bundle")
+        }
+        let markedTab = try XCTUnwrap(markedBundle.tabs.first(where: { $0.rawID == tab.rawID }))
+        XCTAssertTrue(markedTab.needsAttention)
+        XCTAssertEqual(markedTab.attentionMessage, "Build done")
+
+        // Verify attention counts
+        let counts = try await store.attentionCountsBySession()
+        XCTAssertEqual(counts[bundle.session.rawID], 1)
+
+        // Clear attention
+        let clearValue = try await service.execute(
+            .tabClearAttention(sessionToken: bundle.session.id, tabToken: tab.id)
+        )
+        guard case .sessionBundle(let clearedBundle) = clearValue else {
+            return XCTFail("Expected session bundle")
+        }
+        let clearedTab = try XCTUnwrap(clearedBundle.tabs.first(where: { $0.rawID == tab.rawID }))
+        XCTAssertFalse(clearedTab.needsAttention)
+        XCTAssertNil(clearedTab.attentionMessage)
+
+        // Verify attention counts are empty
+        let clearedCounts = try await store.attentionCountsBySession()
+        XCTAssertNil(clearedCounts[bundle.session.rawID])
+    }
+
     func testSessionIDsAreScopedToWorkspace() async throws {
         let harness = try TestHarness()
         defer { harness.cleanup() }
@@ -1239,7 +1289,7 @@ final class ShuttleKitTests: XCTestCase {
         XCTAssertFalse(guide.contains("promote-project"))
     }
 
-    func testSchemaV5MigratesToV6AndNormalizesLegacySessionCheckoutPaths() throws {
+    func testSchemaV5MigratesToV7AndNormalizesLegacySessionCheckoutPaths() throws {
         let harness = try TestHarness()
         defer { harness.cleanup() }
 
@@ -1379,7 +1429,160 @@ final class ShuttleKitTests: XCTestCase {
         XCTAssertEqual(lines[0], "id,uuid,name,path,kind,default_workspace_id,created_at,updated_at")
         XCTAssertEqual(lines[1], "session_id,project_id,checkout_type,checkout_path,metadata_json")
         XCTAssertEqual(lines[2], projectURL.path)
-        XCTAssertEqual(lines[3], "6")
+        XCTAssertEqual(lines[3], "7")
+    }
+
+    func testSchemaV6MigratesToV7WithTabAttentionColumns() throws {
+        let harness = try TestHarness()
+        defer { harness.cleanup() }
+
+        func sqlLiteral(_ value: String) -> String {
+            "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+        }
+
+        let now = sqlLiteral("2026-04-01T00:00:00Z")
+        let sessionRoot = harness.rootURL.appendingPathComponent("session-root", isDirectory: true).path
+        let projectPath = harness.projectsRootURL.appendingPathComponent("alpha", isDirectory: true).path
+        try FileManager.default.createDirectory(atPath: projectPath, withIntermediateDirectories: true)
+
+        let bootstrap = try runProcess(
+            "/usr/bin/env",
+            arguments: [
+                "sqlite3",
+                harness.paths.databaseURL.path,
+                """
+                CREATE TABLE projects (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  uuid TEXT NOT NULL UNIQUE,
+                  name TEXT NOT NULL,
+                  path TEXT NOT NULL UNIQUE,
+                  kind TEXT NOT NULL,
+                  default_workspace_id INTEGER,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL
+                );
+                CREATE TABLE workspaces (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  uuid TEXT NOT NULL UNIQUE,
+                  name TEXT NOT NULL,
+                  slug TEXT NOT NULL,
+                  created_from TEXT NOT NULL,
+                  is_default INTEGER NOT NULL,
+                  source_project_id INTEGER,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL
+                );
+                CREATE TABLE workspace_projects (
+                  workspace_id INTEGER NOT NULL,
+                  project_id INTEGER NOT NULL,
+                  position_index INTEGER NOT NULL,
+                  PRIMARY KEY (workspace_id, project_id)
+                );
+                CREATE TABLE sessions (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  uuid TEXT NOT NULL UNIQUE,
+                  workspace_id INTEGER NOT NULL,
+                  session_number INTEGER NOT NULL,
+                  name TEXT NOT NULL,
+                  slug TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  session_root_path TEXT NOT NULL,
+                  layout_name TEXT,
+                  created_at TEXT NOT NULL,
+                  last_active_at TEXT NOT NULL,
+                  closed_at TEXT
+                );
+                CREATE TABLE session_projects (
+                  session_id INTEGER NOT NULL,
+                  project_id INTEGER NOT NULL,
+                  checkout_type TEXT NOT NULL,
+                  checkout_path TEXT NOT NULL,
+                  metadata_json TEXT,
+                  PRIMARY KEY (session_id, project_id)
+                );
+                CREATE TABLE panes (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  session_id INTEGER NOT NULL,
+                  pane_number INTEGER NOT NULL,
+                  parent_pane_id INTEGER,
+                  split_direction TEXT,
+                  ratio REAL,
+                  position_index INTEGER NOT NULL
+                );
+                CREATE TABLE tabs (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  session_id INTEGER NOT NULL,
+                  pane_id INTEGER NOT NULL,
+                  tab_number INTEGER NOT NULL,
+                  title TEXT NOT NULL,
+                  cwd TEXT NOT NULL,
+                  project_id INTEGER,
+                  command TEXT,
+                  env_json TEXT,
+                  runtime_status TEXT NOT NULL,
+                  position_index INTEGER NOT NULL
+                );
+                INSERT INTO projects (id, uuid, name, path, kind, default_workspace_id, created_at, updated_at)
+                VALUES (1, '11111111-1111-1111-1111-111111111111', 'alpha', \(sqlLiteral(projectPath)), 'normal', 1, \(now), \(now));
+                INSERT INTO workspaces (id, uuid, name, slug, created_from, is_default, source_project_id, created_at, updated_at)
+                VALUES (1, '22222222-2222-2222-2222-222222222222', 'alpha', 'alpha', 'auto', 1, 1, \(now), \(now));
+                INSERT INTO workspace_projects (workspace_id, project_id, position_index)
+                VALUES (1, 1, 0);
+                INSERT INTO sessions (id, uuid, workspace_id, session_number, name, slug, status, session_root_path, layout_name, created_at, last_active_at, closed_at)
+                VALUES (1, '33333333-3333-3333-3333-333333333333', 1, 1, 'dev', 'dev', 'active', \(sqlLiteral(sessionRoot)), NULL, \(now), \(now), NULL);
+                INSERT INTO session_projects (session_id, project_id, checkout_type, checkout_path, metadata_json)
+                VALUES (1, 1, 'direct', \(sqlLiteral(projectPath)), NULL);
+                INSERT INTO panes (id, session_id, pane_number, parent_pane_id, split_direction, ratio, position_index)
+                VALUES (1, 1, 1, NULL, NULL, NULL, 0);
+                INSERT INTO tabs (id, session_id, pane_id, tab_number, title, cwd, project_id, command, env_json, runtime_status, position_index)
+                VALUES (1, 1, 1, 1, 'shell', \(sqlLiteral(projectPath)), 1, NULL, NULL, 'idle', 0);
+                PRAGMA user_version = 6;
+                """
+            ]
+        )
+        XCTAssertTrue(bootstrap.succeeded, bootstrap.stderr)
+
+        let persistence = try PersistenceStore(paths: harness.paths)
+
+        // Verify the migration added the new columns
+        let inspection = try runProcess(
+            "/usr/bin/env",
+            arguments: [
+                "sqlite3",
+                "-noheader",
+                harness.paths.databaseURL.path,
+                """
+                SELECT group_concat(name, ',') FROM pragma_table_info('tabs');
+                PRAGMA user_version;
+                """
+            ]
+        )
+        XCTAssertTrue(inspection.succeeded, inspection.stderr)
+
+        let lines = inspection.stdout
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+        XCTAssertGreaterThanOrEqual(lines.count, 2)
+        XCTAssertTrue(lines[0].contains("needs_attention"), "Expected needs_attention column in tabs: \(lines[0])")
+        XCTAssertTrue(lines[0].contains("attention_message"), "Expected attention_message column in tabs: \(lines[0])")
+        XCTAssertEqual(lines[1], "7")
+
+        // Verify existing tabs decode correctly with the default attention state
+        let tabs = try persistence.listTabs(sessionID: 1)
+        XCTAssertEqual(tabs.count, 1)
+        XCTAssertFalse(tabs[0].needsAttention)
+        XCTAssertNil(tabs[0].attentionMessage)
+
+        // Verify mark/clear attention round-trips
+        try persistence.markTabAttention(tabID: 1, message: "Build complete")
+        let marked = try persistence.listTabs(sessionID: 1)
+        XCTAssertTrue(marked[0].needsAttention)
+        XCTAssertEqual(marked[0].attentionMessage, "Build complete")
+
+        try persistence.clearTabAttention(tabID: 1)
+        let cleared = try persistence.listTabs(sessionID: 1)
+        XCTAssertFalse(cleared[0].needsAttention)
+        XCTAssertNil(cleared[0].attentionMessage)
     }
 
     func testRunProcessDrainsLargeOutputWithoutHanging() throws {

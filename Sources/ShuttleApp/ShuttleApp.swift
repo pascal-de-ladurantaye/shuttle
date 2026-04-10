@@ -265,6 +265,7 @@ final class ShuttleAppModel: ObservableObject {
     @Published var selectedWorkspaceID: Int64?
     @Published var selectedSessionID: Int64?
     @Published var sessionBundle: SessionBundle?
+    @Published private(set) var attentionCountsBySessionRawID: [Int64: Int] = [:]
     @Published var toasts: [ShuttleToast] = []
     @Published var bootstrapHint = ""
     @Published private(set) var isScanningProjects = false
@@ -289,6 +290,8 @@ final class ShuttleAppModel: ObservableObject {
     private var snapshotAutosaveTask: Task<Void, Never>?
     private var toastDismissTasks: [UUID: Task<Void, Never>] = [:]
     private var replayEnvironmentByTabRawID: [Int64: [String: String]] = [:]
+    private var bellObserver: NSObjectProtocol?
+    private var desktopNotificationObserver: NSObjectProtocol?
 
     init() {
         let paths = ShuttlePaths()
@@ -324,6 +327,106 @@ final class ShuttleAppModel: ObservableObject {
             self.store = nil
             self.controlService = nil
             self.toasts = [ShuttleToast(kind: .error, message: "Failed to initialize Shuttle: \(error.localizedDescription)")]
+        }
+        installBellObserver()
+        installDesktopNotificationObserver()
+    }
+
+    private func installBellObserver() {
+        bellObserver = NotificationCenter.default.addObserver(
+            forName: .ghosttySurfaceBellRang,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let surfaceId = note.userInfo?["surfaceId"] as? UUID
+            Task { @MainActor [weak self] in
+                self?.handleBellForSurface(surfaceId)
+            }
+        }
+    }
+
+    private func installDesktopNotificationObserver() {
+        desktopNotificationObserver = NotificationCenter.default.addObserver(
+            forName: .ghosttySurfaceDesktopNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let surfaceId = note.userInfo?["surfaceId"] as? UUID
+            let title = note.userInfo?["title"] as? String
+            let body = note.userInfo?["body"] as? String
+            Task { @MainActor [weak self] in
+                self?.handleDesktopNotificationForSurface(surfaceId, title: title, body: body)
+            }
+        }
+    }
+
+    private func handleDesktopNotificationForSurface(_ surfaceId: UUID?, title: String?, body: String?) {
+        guard let surfaceId else { return }
+
+        let registry = GhosttyTabRuntimeRegistry.shared
+        guard let bundle = sessionBundle else { return }
+        guard let tab = bundle.tabs.first(where: { registry.surfaceIdMatches(tabRawID: $0.rawID, surfaceId: surfaceId) }) else { return }
+        guard focusedTabRawID != tab.rawID else { return }
+
+        let message: String? = {
+            let parts = [title, body].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            return parts.isEmpty ? nil : parts.joined(separator: ": ")
+        }()
+
+        guard let store else { return }
+        Task {
+            do {
+                try await store.markTabAttention(sessionToken: bundle.session.id, tabRawID: tab.rawID, message: message)
+                if var updatedBundle = sessionBundle {
+                    updatedBundle.tabs = updatedBundle.tabs.map { t in
+                        var mutable = t
+                        if mutable.rawID == tab.rawID {
+                            mutable.needsAttention = true
+                            mutable.attentionMessage = message
+                        }
+                        return mutable
+                    }
+                    sessionBundle = updatedBundle
+                }
+                refreshAttentionCounts()
+            } catch {
+                // Best-effort.
+            }
+        }
+    }
+
+    private func handleBellForSurface(_ surfaceId: UUID?) {
+        guard ShuttlePreferences.bellMarksAttention else { return }
+        guard let surfaceId else { return }
+
+        let registry = GhosttyTabRuntimeRegistry.shared
+        // Find the tab rawID for this surface
+        guard let bundle = sessionBundle else { return }
+        guard let tab = bundle.tabs.first(where: { registry.surfaceIdMatches(tabRawID: $0.rawID, surfaceId: surfaceId) }) else { return }
+
+        // Don't mark the currently focused tab
+        guard focusedTabRawID != tab.rawID else { return }
+        guard !tab.needsAttention else { return }
+
+        guard let store else { return }
+        Task {
+            do {
+                try await store.markTabAttention(sessionToken: bundle.session.id, tabRawID: tab.rawID, message: nil)
+                if var updatedBundle = sessionBundle {
+                    updatedBundle.tabs = updatedBundle.tabs.map { t in
+                        var mutable = t
+                        if mutable.rawID == tab.rawID {
+                            mutable.needsAttention = true
+                            mutable.attentionMessage = nil
+                        }
+                        return mutable
+                    }
+                    sessionBundle = updatedBundle
+                }
+                refreshAttentionCounts()
+            } catch {
+                // Best-effort.
+            }
         }
     }
 
@@ -548,6 +651,11 @@ final class ShuttleAppModel: ObservableObject {
             if isVisibleSession(bundle.session.rawID) {
                 applySessionBundleUpdate(bundle)
             }
+        case (.tabMarkAttention, .sessionBundle(let bundle)), (.tabClearAttention, .sessionBundle(let bundle)):
+            if isVisibleSession(bundle.session.rawID) {
+                applySessionBundleUpdate(bundle)
+            }
+            refreshAttentionCounts()
         default:
             break
         }
@@ -579,6 +687,7 @@ final class ShuttleAppModel: ObservableObject {
                 configuredProjectRoots = []
             }
             workspaces = details
+            refreshAttentionCounts()
             startSnapshotAutosaveIfNeeded()
             restoreSelectionIfNeeded(from: details)
             await refreshSelectedSession()
@@ -951,6 +1060,9 @@ final class ShuttleAppModel: ObservableObject {
             rememberedSelections[tab.paneID] = rawID
             activeTabRawIDBySessionRawID[bundle.session.rawID] = rememberedSelections
             lastFocusedTabRawIDBySessionRawID[bundle.session.rawID] = rawID
+            if userInitiated {
+                clearAttentionIfNeeded(tabRawID: rawID)
+            }
         } else {
             focusedTabRawID = nil
             lastFocusedTabRawIDBySessionRawID.removeValue(forKey: bundle.session.rawID)
@@ -960,6 +1072,45 @@ final class ShuttleAppModel: ObservableObject {
     func selectTab(_ rawID: Int64) {
         setFocusedTab(rawID, userInitiated: true)
         requestTerminalFocus(forTabRawID: rawID)
+        clearAttentionIfNeeded(tabRawID: rawID)
+    }
+
+    private func clearAttentionIfNeeded(tabRawID: Int64) {
+        guard let store, let bundle = sessionBundle,
+              let tab = bundle.tabs.first(where: { $0.rawID == tabRawID }),
+              tab.needsAttention else {
+            return
+        }
+        Task {
+            do {
+                try await store.clearTabAttention(sessionToken: bundle.session.id, tabRawID: tabRawID)
+                if var updatedBundle = sessionBundle {
+                    updatedBundle.tabs = updatedBundle.tabs.map { t in
+                        var mutable = t
+                        if mutable.rawID == tabRawID {
+                            mutable.needsAttention = false
+                            mutable.attentionMessage = nil
+                        }
+                        return mutable
+                    }
+                    sessionBundle = updatedBundle
+                }
+                refreshAttentionCounts()
+            } catch {
+                // Best-effort; don't toast on attention-clear failures.
+            }
+        }
+    }
+
+    func refreshAttentionCounts() {
+        guard let store else { return }
+        Task {
+            do {
+                attentionCountsBySessionRawID = try await store.attentionCountsBySession()
+            } catch {
+                // Best-effort; stale counts are acceptable.
+            }
+        }
     }
 
     func activeTab(in paneRawID: Int64, tabs: [ShuttleKit.Tab]) -> ShuttleKit.Tab? {
@@ -2233,7 +2384,8 @@ private struct ContentView: View {
                 return "folder"
             }
         }()
-        let iconColor: Color = .accentColor
+        let workspaceAttentionCount = details.sessions.reduce(0) { $0 + (model.attentionCountsBySessionRawID[$1.rawID] ?? 0) }
+        let iconColor: Color = workspaceAttentionCount > 0 ? .orange : .accentColor
         let isPinned = isWorkspacePinned(details)
 
         return HoverPinnableWorkspaceRow(
@@ -2244,6 +2396,7 @@ private struct ContentView: View {
             isSelected: selectedWorkspaceRawID == details.workspace.rawID,
             isPinned: isPinned,
             canTogglePin: workspacePinPreferenceKey(for: details) != nil,
+            attentionCount: workspaceAttentionCount,
             onSelect: {
                 Task { await model.selectWorkspace(details.workspace.rawID) }
             },
@@ -2524,13 +2677,17 @@ private struct ContentView: View {
             systemImage = "clock"
         }
 
+        let attentionCount = model.attentionCountsBySessionRawID[session.rawID] ?? 0
+        let iconColor: Color = attentionCount > 0 ? .orange : (session.status == .active ? .accentColor : .secondary)
+
         return TimelineView(.periodic(from: .now, by: 30)) { context in
             HoverDeletableSessionRow(
                 systemImage: systemImage,
-                iconColor: session.status == .active ? .accentColor : .secondary,
+                iconColor: iconColor,
                 title: session.name,
                 subtitle: sessionSidebarSubtitle(for: session, relativeTo: context.date),
                 isSelected: selectedSessionRawID == session.rawID,
+                attentionCount: attentionCount,
                 onSelect: {
                     Task { await model.selectSession(session.rawID) }
                 },
@@ -3182,6 +3339,7 @@ private struct SidebarListRow: View {
     let subtitle: String?
     let isSelected: Bool
     let trailingAccessorySystemImage: String?
+    let attentionCount: Int
 
     init(
         systemImage: String,
@@ -3189,7 +3347,8 @@ private struct SidebarListRow: View {
         title: String,
         subtitle: String?,
         isSelected: Bool,
-        trailingAccessorySystemImage: String? = nil
+        trailingAccessorySystemImage: String? = nil,
+        attentionCount: Int = 0
     ) {
         self.systemImage = systemImage
         self.iconColor = iconColor
@@ -3197,6 +3356,7 @@ private struct SidebarListRow: View {
         self.subtitle = subtitle
         self.isSelected = isSelected
         self.trailingAccessorySystemImage = trailingAccessorySystemImage
+        self.attentionCount = attentionCount
     }
 
     private var chromePalette: ShuttleChromePalette {
@@ -3239,6 +3399,16 @@ private struct SidebarListRow: View {
 
             Spacer(minLength: 0)
 
+            if attentionCount > 0 {
+                Text("\(attentionCount)")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.orange))
+                    .transition(.scale(scale: 0.5).combined(with: .opacity))
+            }
+
             if let trailingAccessorySystemImage {
                 Image(systemName: trailingAccessorySystemImage)
                     .font(.caption.weight(.semibold))
@@ -3256,6 +3426,7 @@ private struct SidebarListRow: View {
         )
         .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         .animation(.easeOut(duration: 0.14), value: trailingAccessorySystemImage != nil)
+        .animation(.easeOut(duration: 0.14), value: attentionCount)
     }
 }
 
@@ -3269,6 +3440,7 @@ private struct HoverPinnableWorkspaceRow: View {
     let isSelected: Bool
     let isPinned: Bool
     let canTogglePin: Bool
+    var attentionCount: Int = 0
     let onSelect: () -> Void
     let onTogglePin: () -> Void
 
@@ -3326,7 +3498,8 @@ private struct HoverPinnableWorkspaceRow: View {
                     title: title,
                     subtitle: subtitle,
                     isSelected: isSelected,
-                    trailingAccessorySystemImage: isPinned && !isHovering ? "pin.fill" : nil
+                    trailingAccessorySystemImage: isPinned && !isHovering ? "pin.fill" : nil,
+                    attentionCount: attentionCount
                 )
             }
             .buttonStyle(.plain)
@@ -3375,6 +3548,7 @@ private struct HoverDeletableSessionRow: View {
     let title: String
     let subtitle: String?
     let isSelected: Bool
+    var attentionCount: Int = 0
     let onSelect: () -> Void
     let onDelete: () -> Void
 
@@ -3390,7 +3564,8 @@ private struct HoverDeletableSessionRow: View {
                     iconColor: iconColor,
                     title: title,
                     subtitle: subtitle,
-                    isSelected: isSelected
+                    isSelected: isSelected,
+                    attentionCount: attentionCount
                 )
             }
             .buttonStyle(.plain)
@@ -3617,6 +3792,8 @@ private struct SessionDetailView: View {
                                     title: title,
                                     isActive: isActive,
                                     isFocusedPane: isFocusedPane,
+                                    needsAttention: tab.needsAttention,
+                                    attentionMessage: tab.attentionMessage,
                                     onSelect: {
                                         model.selectTab(tab.rawID)
                                     },
@@ -3787,6 +3964,8 @@ private struct GhosttyPaneTabCell: View {
     let title: String
     let isActive: Bool
     let isFocusedPane: Bool
+    let needsAttention: Bool
+    let attentionMessage: String?
     let onSelect: () -> Void
     let onClose: () -> Void
 
@@ -3796,7 +3975,17 @@ private struct GhosttyPaneTabCell: View {
         ShuttleChromePalette(colorScheme: colorScheme)
     }
 
+    private var showsAttentionTreatment: Bool {
+        needsAttention && !(isActive && isFocusedPane)
+    }
+
     private var fillColor: Color {
+        if showsAttentionTreatment {
+            return colorScheme == .dark
+                ? Color.orange.opacity(0.18)
+                : Color.orange.opacity(0.12)
+        }
+
         if isActive {
             return isFocusedPane ? chromePalette.emphasizedSelectionFill : chromePalette.inactivePaneActiveTabFill
         }
@@ -3809,6 +3998,10 @@ private struct GhosttyPaneTabCell: View {
     }
 
     private var borderColor: Color {
+        if showsAttentionTreatment {
+            return Color.orange.opacity(0.5)
+        }
+
         if isActive {
             return chromePalette.selectedBorderColor(isActive: true)
         }
@@ -3821,6 +4014,10 @@ private struct GhosttyPaneTabCell: View {
     }
 
     private var textColor: Color {
+        if showsAttentionTreatment {
+            return Color.orange
+        }
+
         if isActive {
             return isFocusedPane ? chromePalette.activeTabText : chromePalette.inactivePaneActiveTabText
         }
@@ -3837,7 +4034,8 @@ private struct GhosttyPaneTabCell: View {
     }
 
     private var tabOpacity: Double {
-        isFocusedPane ? 1.0 : (isActive ? 0.72 : 0.5)
+        if showsAttentionTreatment { return 1.0 }
+        return isFocusedPane ? 1.0 : (isActive ? 0.72 : 0.5)
     }
 
     var body: some View {
@@ -3876,12 +4074,31 @@ private struct GhosttyPaneTabCell: View {
                 .strokeBorder(borderColor, lineWidth: 0.5)
         }
         .overlay(alignment: .bottom) {
-            if isActive && isFocusedPane {
+            if isActive && isFocusedPane && !showsAttentionTreatment {
                 Capsule()
                     .fill(Color.accentColor)
                     .frame(height: 2)
                     .padding(.horizontal, 12)
                     .padding(.bottom, 1)
+            }
+        }
+        .overlay(alignment: .top) {
+            if showsAttentionTreatment {
+                Capsule()
+                    .fill(Color.orange)
+                    .frame(height: 2)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 1)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if showsAttentionTreatment {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 7, height: 7)
+                    .padding(4)
+                    .help(attentionMessage ?? "Needs attention")
+                    .transition(.scale(scale: 0.5).combined(with: .opacity))
             }
         }
         .shadow(color: chromePalette.tabShadow(isActive: isActive, isFocusedPane: isFocusedPane), radius: colorScheme == .dark ? 2 : 1, y: 1)

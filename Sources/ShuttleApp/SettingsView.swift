@@ -50,6 +50,7 @@ private struct GeneralSettingsView: View {
     @AppStorage(ShuttlePreferenceKey.reopenPreviousSelectionOnLaunch) private var reopenPreviousSelectionOnLaunch = true
     @AppStorage(ShuttlePreferenceKey.restoreScrollbackOnReopen) private var restoreScrollbackOnReopen = true
     @AppStorage(ShuttlePreferenceKey.seedMultiProjectAgentGuide) private var seedMultiProjectAgentGuide = true
+    @AppStorage(ShuttlePreferenceKey.bellMarksAttention) private var bellMarksAttention = true
 
     var body: some View {
         Form {
@@ -81,6 +82,15 @@ private struct GeneralSettingsView: View {
                 Text("Agent workflows")
             } footer: {
                 Text("When enabled, Shuttle seeds `AGENTS.md` into session roots so agents can discover the active source checkout and any project-specific guidance files.")
+            }
+
+            Section {
+                Toggle("Bell marks tab as needing attention", isOn: $bellMarksAttention)
+                    .shuttleHint("Mark non-focused tabs as needing attention when a terminal bell rings.")
+            } header: {
+                Text("Notifications")
+            } footer: {
+                Text("When enabled, a terminal bell (\\a) in a non-focused tab marks that tab with an attention indicator. The indicator clears when you select the tab.")
             }
 
             Section {

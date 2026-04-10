@@ -363,6 +363,36 @@ public actor WorkspaceStore {
         return try persistence.closeTab(tabID: tabRawID)
     }
 
+    public func markTabAttention(sessionToken: String, tabRawID: Int64, message: String?) throws {
+        guard let session = try persistence.session(matching: sessionToken) else {
+            throw ShuttleError.notFound(entity: "Session", token: sessionToken)
+        }
+
+        guard let existingBundle = try persistence.sessionBundle(id: session.rawID),
+              existingBundle.tabs.contains(where: { $0.rawID == tabRawID }) else {
+            throw ShuttleError.invalidArguments("Tab \(Tab.makeRef(tabRawID)) does not belong to session \(sessionToken)")
+        }
+
+        try persistence.markTabAttention(tabID: tabRawID, message: message)
+    }
+
+    public func clearTabAttention(sessionToken: String, tabRawID: Int64) throws {
+        guard let session = try persistence.session(matching: sessionToken) else {
+            throw ShuttleError.notFound(entity: "Session", token: sessionToken)
+        }
+
+        guard let existingBundle = try persistence.sessionBundle(id: session.rawID),
+              existingBundle.tabs.contains(where: { $0.rawID == tabRawID }) else {
+            throw ShuttleError.invalidArguments("Tab \(Tab.makeRef(tabRawID)) does not belong to session \(sessionToken)")
+        }
+
+        try persistence.clearTabAttention(tabID: tabRawID)
+    }
+
+    public func attentionCountsBySession() throws -> [Int64: Int] {
+        try persistence.attentionCountsBySession()
+    }
+
     public func checkpointTab(
         rawID: Int64,
         title: String? = nil,

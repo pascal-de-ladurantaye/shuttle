@@ -15,6 +15,7 @@ enum ShuttlePreferenceKey {
     static let pinnedWorkspaceKeys = "Shuttle.pinnedWorkspaceKeys"
     static let sessionSidebarArchivedExpanded = "Shuttle.sessionSidebarArchivedExpanded"
     static let sessionSidebarProjectsExpanded = "Shuttle.sessionSidebarProjectsExpanded"
+    static let bellMarksAttention = "Shuttle.bellMarksAttention"
 }
 
 enum ShuttlePreferences {
@@ -42,6 +43,7 @@ enum ShuttlePreferences {
             ShuttlePreferenceKey.pinnedWorkspaceKeys: emptyPinnedWorkspaceKeysStorage,
             ShuttlePreferenceKey.sessionSidebarArchivedExpanded: false,
             ShuttlePreferenceKey.sessionSidebarProjectsExpanded: false,
+            ShuttlePreferenceKey.bellMarksAttention: true,
         ])
     }
 
@@ -63,6 +65,10 @@ enum ShuttlePreferences {
 
     static var seedMultiProjectAgentGuide: Bool {
         defaults.object(forKey: ShuttlePreferenceKey.seedMultiProjectAgentGuide) as? Bool ?? true
+    }
+
+    static var bellMarksAttention: Bool {
+        defaults.object(forKey: ShuttlePreferenceKey.bellMarksAttention) as? Bool ?? true
     }
 
     static func sanitizeLayoutDefaults(validPresetIDs: Set<String>) {
@@ -89,6 +95,7 @@ enum ShuttlePreferences {
         defaults.set(LayoutPresetStore.defaultPresetID, forKey: ShuttlePreferenceKey.defaultSessionLayoutID)
         defaults.set(LayoutPresetStore.defaultPresetID, forKey: ShuttlePreferenceKey.defaultTryLayoutID)
         defaults.set(true, forKey: ShuttlePreferenceKey.seedMultiProjectAgentGuide)
+        defaults.set(true, forKey: ShuttlePreferenceKey.bellMarksAttention)
         defaults.set(true, forKey: ShuttlePreferenceKey.workspaceSidebarPinnedExpanded)
         defaults.set(true, forKey: ShuttlePreferenceKey.workspaceSidebarRecentExpanded)
         defaults.set(true, forKey: ShuttlePreferenceKey.workspaceSidebarProjectExpanded)
