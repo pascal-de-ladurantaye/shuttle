@@ -320,41 +320,21 @@ private struct LayoutsSettingsView: View {
             }
 
             Section {
-                ForEach(layouts.presets, id: \.id) { preset in
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 8) {
-                                Text(preset.name)
-                                    .fontWeight(.medium)
-
-                                if preset.isBuiltIn {
-                                    SettingsBadge("Built-in")
-                                }
-
-                                if preset.id == defaultSessionLayoutID {
-                                    SettingsBadge("Sessions default", tone: .accent)
-                                }
-
-                                if preset.id == defaultTryLayoutID {
-                                    SettingsBadge("Try default", tone: .accent)
-                                }
-                            }
-
-                            if let description = preset.description {
-                                Text(description)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        Spacer()
-                        Text(preset.summary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 2)
+                ForEach(layouts.presets.filter(\.isBuiltIn), id: \.id) { preset in
+                    layoutPresetRow(preset)
                 }
             } header: {
-                Text("Preset library")
+                Text("Built-in presets")
+            }
+
+            if layouts.presets.contains(where: { !$0.isBuiltIn }) {
+                Section {
+                    ForEach(layouts.presets.filter { !$0.isBuiltIn }, id: \.id) { preset in
+                        layoutPresetRow(preset)
+                    }
+                } header: {
+                    Text("Custom presets")
+                }
             }
 
             Section {
@@ -385,6 +365,40 @@ private struct LayoutsSettingsView: View {
             defaultSessionLayoutID = layouts.resolvedPresetID(preferred: defaultSessionLayoutID)
             defaultTryLayoutID = layouts.resolvedPresetID(preferred: defaultTryLayoutID)
         }
+    }
+
+    private func layoutPresetRow(_ preset: LayoutPreset) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(preset.name)
+                        .fontWeight(.medium)
+
+                    if preset.isBuiltIn {
+                        SettingsBadge("Built-in")
+                    }
+
+                    if preset.id == defaultSessionLayoutID {
+                        SettingsBadge("Sessions default", tone: .accent)
+                    }
+
+                    if preset.id == defaultTryLayoutID {
+                        SettingsBadge("Try default", tone: .accent)
+                    }
+                }
+
+                if let description = preset.description {
+                    Text(description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Text(preset.summary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
     }
 }
 
@@ -815,6 +829,9 @@ struct PresetSummaryCard: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                MiniLayoutPreview(root: preset.root.normalized())
+                    .frame(height: 60)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
@@ -822,5 +839,61 @@ struct PresetSummaryCard: View {
             Text("No preset selected")
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+/// Compact visual representation of a layout preset's pane structure.
+struct MiniLayoutPreview: View {
+    let root: LayoutPaneTemplate
+
+    var body: some View {
+        paneView(root)
+            .clipShape(RoundedRectangle(cornerRadius: ShuttleCornerRadius.medium, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: ShuttleCornerRadius.medium, style: .continuous)
+                    .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
+            }
+    }
+
+    private func paneView(_ pane: LayoutPaneTemplate) -> AnyView {
+        if pane.isLeaf {
+            return AnyView(leafView(tabCount: max(pane.tabs.count, 1)))
+        }
+        let isSideBySide = pane.splitDirection == .left || pane.splitDirection == .right || pane.splitDirection == nil
+        if isSideBySide {
+            return AnyView(
+                HStack(spacing: 1) {
+                    ForEach(Array(pane.children.enumerated()), id: \.offset) { child in
+                        paneView(child.element)
+                    }
+                }
+            )
+        } else {
+            return AnyView(
+                VStack(spacing: 1) {
+                    ForEach(Array(pane.children.enumerated()), id: \.offset) { child in
+                        paneView(child.element)
+                    }
+                }
+            )
+        }
+    }
+
+    private func leafView(tabCount: Int) -> some View {
+        VStack(spacing: 2) {
+            if tabCount > 1 {
+                HStack(spacing: 2) {
+                    ForEach(0..<min(tabCount, 4), id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .fill(Color.accentColor.opacity(0.4))
+                            .frame(height: 4)
+                    }
+                }
+                .padding(.horizontal, 3)
+                .padding(.top, 3)
+            }
+            Color.secondary.opacity(0.08)
+        }
+        .background(Color.secondary.opacity(0.04))
     }
 }

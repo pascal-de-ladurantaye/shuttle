@@ -174,7 +174,7 @@ struct NewSessionSheet: View {
                 }
             }
         }
-        .frame(width: 760, height: 580)
+        .frame(minWidth: 640, idealWidth: 760, minHeight: 460, idealHeight: 580)
         .onAppear {
             selectedLayoutID = layouts.resolvedPresetID(preferred: selectedLayoutID)
             DispatchQueue.main.async {
@@ -327,7 +327,7 @@ struct NewTrySessionSheet: View {
                 }
             }
         }
-        .frame(width: 760, height: 580)
+        .frame(minWidth: 640, idealWidth: 760, minHeight: 460, idealHeight: 580)
         .onAppear {
             selectedLayoutID = layouts.resolvedPresetID(preferred: selectedLayoutID)
             DispatchQueue.main.async {
@@ -425,7 +425,7 @@ struct RenameSessionSheet: View {
                 }
             }
         }
-        .frame(width: 640, height: 360)
+        .frame(minWidth: 520, idealWidth: 640, minHeight: 300, idealHeight: 360)
         .onAppear {
             if sessionName.isEmpty {
                 sessionName = session?.name ?? ""
@@ -498,9 +498,9 @@ private struct SessionCreationSheetScaffold<Content: View>: View {
                     ProgressView()
                         .controlSize(.small)
                 } else if let errorText {
-                    Text(errorText)
+                    Label(errorText, systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -578,11 +578,11 @@ private struct SessionCreationCard<Content: View>: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: ShuttleCornerRadius.large, style: .continuous)
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: ShuttleCornerRadius.large, style: .continuous)
                 .stroke(Color(nsColor: .separatorColor).opacity(0.28), lineWidth: 1)
         }
     }

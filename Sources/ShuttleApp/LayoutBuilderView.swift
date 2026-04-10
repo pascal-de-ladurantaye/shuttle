@@ -284,7 +284,7 @@ private struct LayoutStructureOutline: View {
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: ShuttleCornerRadius.medium, style: .continuous)
                     .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
             )
         }
@@ -346,12 +346,12 @@ private struct LayoutPreviewCanvas: View {
                 .padding(12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .background(leafBackground(path: path))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: ShuttleCornerRadius.card, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: ShuttleCornerRadius.card, style: .continuous)
                         .stroke(selection == .pane(path) ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: selection == .pane(path) ? 2 : 1)
                 )
-                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: ShuttleCornerRadius.card, style: .continuous))
                 .onTapGesture {
                     onSelectPane(path)
                 }
@@ -380,7 +380,7 @@ private struct LayoutPreviewCanvas: View {
             children
                 .padding(10)
                 .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: ShuttleCornerRadius.large, style: .continuous)
                         .fill(selection == .pane(path) ? Color.accentColor.opacity(0.08) : Color.secondary.opacity(0.06))
                 )
                 .overlay(alignment: .topLeading) {
@@ -390,7 +390,7 @@ private struct LayoutPreviewCanvas: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: ShuttleCornerRadius.large, style: .continuous))
                 .onTapGesture {
                     onSelectPane(path)
                 }
@@ -468,7 +468,7 @@ private struct LayoutInspectorView: View {
                     }
                     .padding(12)
                     .background(Color.secondary.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: ShuttleCornerRadius.card, style: .continuous))
                 }
 
                 switch selection {

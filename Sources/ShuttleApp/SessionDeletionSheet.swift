@@ -34,10 +34,11 @@ struct DeleteSessionSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            header
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                header
 
-            Group {
+                Group {
                 if isLoading && preview == nil {
                     VStack(spacing: 12) {
                         ProgressView()
@@ -73,23 +74,30 @@ struct DeleteSessionSheet: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            if let localError {
-                Text(localError)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
             }
+            .padding(20)
 
             Divider()
 
-            HStack {
+            HStack(spacing: 12) {
+                if isDeleting {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if let localError {
+                    Label(localError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 16)
+
                 Button("Cancel") {
                     dismiss()
                 }
                 .shuttleHint("Dismiss this sheet without deleting the session.")
+                .keyboardShortcut(.cancelAction)
                 .disabled(isDeleting)
-
-                Spacer()
 
                 Button("Delete Session") {
                     submit()
@@ -97,11 +105,14 @@ struct DeleteSessionSheet: View {
                 .shuttleHint(deleteButtonHelpText)
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
+                .keyboardShortcut(.defaultAction)
                 .disabled(!canConfirm)
             }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .background(.bar)
         }
-        .padding(20)
-        .frame(width: 760, height: 620)
+        .frame(minWidth: 660, idealWidth: 760, minHeight: 500, idealHeight: 620)
         .task(id: sessionRawID) {
             await loadPreview()
         }
@@ -146,7 +157,7 @@ struct DeleteSessionSheet: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: ShuttleCornerRadius.card, style: .continuous)
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
     }
@@ -178,7 +189,7 @@ struct DeleteSessionSheet: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: ShuttleCornerRadius.card, style: .continuous)
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
     }
@@ -261,7 +272,7 @@ struct DeleteSessionSheet: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: ShuttleCornerRadius.card, style: .continuous)
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
     }
