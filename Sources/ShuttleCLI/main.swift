@@ -995,6 +995,27 @@ private struct CLI {
             } else {
                 print("Cleared attention on \(tabToken)")
             }
+        case "focus":
+            let args = Array(arguments.dropFirst())
+            guard let tabToken = resolveTabToken(explicit: try parseOptionalValue("--tab", in: args)) else {
+                throw ShuttleError.invalidArguments("tab focus requires --tab <tab> or SHUTTLE_TAB_ID")
+            }
+            let sessionToken = try requiredSessionToken(
+                explicit: try parseOptionalValue("--session", in: args),
+                childToken: tabToken,
+                childLabel: "tab"
+            )
+            let updated = try await controlSessionBundle(
+                command: .tabFocus(sessionToken: sessionToken, tabToken: tabToken),
+                store: store,
+                launchIfNeeded: true,
+                allowLocalFallback: false
+            )
+            if json {
+                shuttleCLIPrintJSONEnvelope(type: "session", data: updated)
+            } else {
+                print("Focused \(tabToken)")
+            }
         default:
             throw ShuttleError.invalidCommand("Unknown tab subcommand: \(command)")
         }
