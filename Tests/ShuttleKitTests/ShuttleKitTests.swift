@@ -1665,6 +1665,173 @@ final class ShuttleKitTests: XCTestCase {
             )
         )
     }
+
+    // MARK: - Runtime status: exited
+
+    func testRuntimeStatusExitedRoundTripsViaCodable() throws {
+        let encoded = try JSONEncoder().encode(RuntimeStatus.exited)
+        let decoded = try JSONDecoder().decode(RuntimeStatus.self, from: encoded)
+        XCTAssertEqual(decoded, .exited)
+        XCTAssertEqual(RuntimeStatus.exited.rawValue, "exited")
+    }
+
+    func testMarkTabExitedUpdatesRuntimeStatus() async throws {
+        let harness = try TestHarness()
+        defer { harness.cleanup() }
+
+        try harness.writeConfig(
+            sessionRoot: harness.rootURL.appendingPathComponent("session-root", isDirectory: true).path,
+            triesRoot: harness.rootURL.appendingPathComponent("tries", isDirectory: true).path,
+            projectRoots: [harness.projectsRootURL.path]
+        )
+
+        let alphaURL = harness.projectsRootURL.appendingPathComponent("alpha", isDirectory: true)
+        try FileManager.default.createDirectory(at: alphaURL, withIntermediateDirectories: true)
+
+        let store = try WorkspaceStore(paths: harness.paths)
+        _ = try await store.scanProjects()
+        let bundle = try await store.createSession(workspaceToken: "alpha", name: "dev", layoutName: nil)
+        let tab = try XCTUnwrap(bundle.tabs.first)
+
+        // Tab starts as placeholder (newly created)
+        XCTAssertEqual(tab.runtimeStatus, .placeholder)
+
+        // Mark as exited
+        try await store.markTabExited(rawID: tab.rawID)
+
+        // Verify the status persisted
+        let refreshed = try await store.sessionBundle(token: bundle.session.id)
+        let refreshedTab = try XCTUnwrap(refreshed.tabs.first(where: { $0.rawID == tab.rawID }))
+        XCTAssertEqual(refreshedTab.runtimeStatus, .exited)
+    }
+
+    func testMarkTabExitedDoesNotAffectOtherTabs() async throws {
+        let harness = try TestHarness()
+        defer { harness.cleanup() }
+
+        try harness.writeConfig(
+            sessionRoot: harness.rootURL.appendingPathComponent("session-root", isDirectory: true).path,
+            triesRoot: harness.rootURL.appendingPathComponent("tries", isDirectory: true).path,
+            projectRoots: [harness.projectsRootURL.path]
+        )
+
+        let alphaURL = harness.projectsRootURL.appendingPathComponent("alpha", isDirectory: true)
+        try FileManager.default.createDirectory(at: alphaURL, withIntermediateDirectories: true)
+
+        let store = try WorkspaceStore(paths: harness.paths)
+        _ = try await store.scanProjects()
+        let bundle = try await store.createSession(workspaceToken: "alpha", name: "dev", layoutName: nil)
+        let sourcePane = try XCTUnwrap(bundle.panes.first)
+        let firstTab = try XCTUnwrap(bundle.tabs.first)
+
+        // Add a second tab
+        let updated = try await store.createTab(
+            sessionToken: bundle.session.id,
+            paneRawID: sourcePane.rawID,
+            sourceTabRawID: firstTab.rawID
+        )
+        let secondTab = try XCTUnwrap(updated.tabs.first(where: { $0.rawID != firstTab.rawID }))
+
+        // Mark only the first tab as exited
+        try await store.markTabExited(rawID: firstTab.rawID)
+
+        let refreshed = try await store.sessionBundle(token: bundle.session.id)
+        let refreshedFirst = try XCTUnwrap(refreshed.tabs.first(where: { $0.rawID == firstTab.rawID }))
+        let refreshedSecond = try XCTUnwrap(refreshed.tabs.first(where: { $0.rawID == secondTab.rawID }))
+        XCTAssertEqual(refreshedFirst.runtimeStatus, .exited)
+        XCTAssertNotEqual(refreshedSecond.runtimeStatus, .exited)
+    }
+
+    func testControlCapabilitiesAdvertiseTabFocusCommand() throws {
+        let store = try WorkspaceStore()
+        let service = ShuttleControlCommandService(store: store)
+        let supported = Set(service.capabilities().supportedCommands)
+
+        XCTAssertTrue(supported.contains("tab.focus"))
+    }
+
+    func testControlCommandServiceRejectsTabFocusWithoutAppContext() async throws {
+        let harness = try TestHarness()
+        defer { harness.cleanup() }
+
+        try harness.writeConfig(
+            sessionRoot: harness.rootURL.appendingPathComponent("session-root", isDirectory: true).path,
+            triesRoot: harness.rootURL.appendingPathComponent("tries", isDirectory: true).path,
+            projectRoots: [harness.projectsRootURL.path]
+        )
+
+        let alphaURL = harness.projectsRootURL.appendingPathComponent("alpha", isDirectory: true)
+        try FileManager.default.createDirectory(at: alphaURL, withIntermediateDirectories: true)
+
+        let store = try WorkspaceStore(paths: harness.paths)
+        _ = try await store.scanProjects()
+        let bundle = try await store.createSession(workspaceToken: "alpha", name: "dev", layoutName: nil)
+        let tab = try XCTUnwrap(bundle.tabs.first)
+        let service = ShuttleControlCommandService(store: store)
+
+        // tab.focus requires the app control plane (like tab.send/read)
+        await XCTAssertThrowsErrorAsync(
+            try await service.execute(.tabFocus(sessionToken: bundle.session.id, tabToken: tab.id))
+        )
+    }
+
+    func testCheckpointTabPreservesExitedStatus() async throws {
+        let harness = try TestHarness()
+        defer { harness.cleanup() }
+
+        try harness.writeConfig(
+            sessionRoot: harness.rootURL.appendingPathComponent("session-root", isDirectory: true).path,
+            triesRoot: harness.rootURL.appendingPathComponent("tries", isDirectory: true).path,
+            projectRoots: [harness.projectsRootURL.path]
+        )
+
+        let alphaURL = harness.projectsRootURL.appendingPathComponent("alpha", isDirectory: true)
+        try FileManager.default.createDirectory(at: alphaURL, withIntermediateDirectories: true)
+
+        let store = try WorkspaceStore(paths: harness.paths)
+        _ = try await store.scanProjects()
+        let bundle = try await store.createSession(workspaceToken: "alpha", name: "dev", layoutName: nil)
+        let tab = try XCTUnwrap(bundle.tabs.first)
+
+        // Mark tab as exited
+        try await store.markTabExited(rawID: tab.rawID)
+        let afterExit = try await store.sessionBundle(token: bundle.session.id)
+        XCTAssertEqual(afterExit.tabs.first?.runtimeStatus, .exited)
+
+        // A late-arriving checkpoint flush must NOT resurrect the dead tab
+        try await store.checkpointTab(rawID: tab.rawID, title: "shell")
+        let afterCheckpoint = try await store.sessionBundle(token: bundle.session.id)
+        XCTAssertEqual(afterCheckpoint.tabs.first?.runtimeStatus, .exited)
+    }
+
+    func testActivateSessionRecognizesExitedTabsAsCheckpointed() async throws {
+        let harness = try TestHarness()
+        defer { harness.cleanup() }
+
+        try harness.writeConfig(
+            sessionRoot: harness.rootURL.appendingPathComponent("session-root", isDirectory: true).path,
+            triesRoot: harness.rootURL.appendingPathComponent("tries", isDirectory: true).path,
+            projectRoots: [harness.projectsRootURL.path]
+        )
+
+        let alphaURL = harness.projectsRootURL.appendingPathComponent("alpha", isDirectory: true)
+        try FileManager.default.createDirectory(at: alphaURL, withIntermediateDirectories: true)
+
+        let store = try WorkspaceStore(paths: harness.paths)
+        _ = try await store.scanProjects()
+        let bundle = try await store.createSession(workspaceToken: "alpha", name: "dev", layoutName: nil)
+        let tab = try XCTUnwrap(bundle.tabs.first)
+
+        // Checkpoint then mark as exited, then close the session
+        try await store.checkpointTab(rawID: tab.rawID, title: "agent", cwd: alphaURL.path)
+        try await store.markTabExited(rawID: tab.rawID)
+        _ = try await store.closeSession(token: bundle.session.id)
+
+        // Reactivating should recognize the exited tab as a valid checkpoint
+        let activation = try await store.activateSession(token: bundle.session.id)
+        XCTAssertTrue(activation.wasRestored)
+        XCTAssertEqual(activation.bundle.session.status, .active)
+    }
 }
 
 

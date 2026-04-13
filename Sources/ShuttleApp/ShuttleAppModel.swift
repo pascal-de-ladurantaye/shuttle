@@ -35,8 +35,26 @@ final class ShuttleAppModel: ObservableObject {
     private var snapshotAutosaveTask: Task<Void, Never>?
     private var toastDismissTasks: [UUID: Task<Void, Never>] = [:]
     private var replayEnvironmentByTabRawID: [Int64: [String: String]] = [:]
-    private var bellObserver: NSObjectProtocol?
-    private var desktopNotificationObserver: NSObjectProtocol?
+    // Note: observer tokens are declared as nonisolated(unsafe) above deinit.
+
+    // Observer tokens are stored as nonisolated(unsafe) so they can be
+    // cleaned up in deinit, which is nonisolated for @MainActor classes.
+    // Safe because they are only written from @MainActor init/install methods.
+    nonisolated(unsafe) private var _bellObserver: (any NSObjectProtocol)?
+    nonisolated(unsafe) private var _desktopNotificationObserver: (any NSObjectProtocol)?
+    nonisolated(unsafe) private var _surfaceCloseObserver: (any NSObjectProtocol)?
+
+    deinit {
+        if let _bellObserver {
+            NotificationCenter.default.removeObserver(_bellObserver)
+        }
+        if let _desktopNotificationObserver {
+            NotificationCenter.default.removeObserver(_desktopNotificationObserver)
+        }
+        if let _surfaceCloseObserver {
+            NotificationCenter.default.removeObserver(_surfaceCloseObserver)
+        }
+    }
 
     init() {
         let paths = ShuttlePaths()
@@ -75,10 +93,11 @@ final class ShuttleAppModel: ObservableObject {
         }
         installBellObserver()
         installDesktopNotificationObserver()
+        installSurfaceCloseObserver()
     }
 
     private func installBellObserver() {
-        bellObserver = NotificationCenter.default.addObserver(
+        _bellObserver = NotificationCenter.default.addObserver(
             forName: .ghosttySurfaceBellRang,
             object: nil,
             queue: .main
@@ -90,8 +109,53 @@ final class ShuttleAppModel: ObservableObject {
         }
     }
 
+    private func installSurfaceCloseObserver() {
+        _surfaceCloseObserver = NotificationCenter.default.addObserver(
+            forName: .ghosttySurfaceDidClose,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let surfaceId = note.userInfo?["surfaceId"] as? UUID
+            Task { @MainActor [weak self] in
+                self?.handleSurfaceClose(surfaceId)
+            }
+        }
+    }
+
+    private func handleSurfaceClose(_ surfaceId: UUID?) {
+        guard let surfaceId else { return }
+
+        let registry = GhosttyTabRuntimeRegistry.shared
+        // Resolve the owning tab via the runtime registry (not sessionBundle)
+        // so close events from background sessions are not dropped.
+        guard let tabRawID = registry.tabRawID(forSurfaceId: surfaceId) else { return }
+        guard let store else { return }
+
+        // Remove the runtime entry so buildSessionSnapshot no longer
+        // classifies the tab as live/idle on subsequent snapshots.
+        registry.remove(runtimeKey: Tab.makeRef(tabRawID))
+        replayEnvironmentByTabRawID.removeValue(forKey: tabRawID)
+
+        // Mark the tab as exited so the CLI can report it accurately.
+        Task {
+            do {
+                try await store.markTabExited(rawID: tabRawID)
+            } catch {
+                // Best-effort — don't toast for background bookkeeping.
+            }
+
+            // Update the in-memory bundle so the UI reflects the change immediately
+            // (only when the closed tab belongs to the currently visible session).
+            if var updatedBundle = self.sessionBundle,
+               let idx = updatedBundle.tabs.firstIndex(where: { $0.rawID == tabRawID }) {
+                updatedBundle.tabs[idx].runtimeStatus = .exited
+                self.sessionBundle = updatedBundle
+            }
+        }
+    }
+
     private func installDesktopNotificationObserver() {
-        desktopNotificationObserver = NotificationCenter.default.addObserver(
+        _desktopNotificationObserver = NotificationCenter.default.addObserver(
             forName: .ghosttySurfaceDesktopNotification,
             object: nil,
             queue: .main
@@ -331,6 +395,14 @@ final class ShuttleAppModel: ObservableObject {
                     afterCursorToken: afterCursorToken
                 )
             )
+        case .tabFocus(let sessionToken, let tabToken):
+            persistSessionSnapshot(includeScrollback: true)
+            await GhosttyCheckpointWriter.shared.flushAll()
+            let activation = try await controlService.store.activateSession(token: sessionToken)
+            await applyControlSessionActivation(activation)
+            let tab = try ShuttleControlCommandService.resolveTab(in: activation.bundle, token: tabToken)
+            selectTab(tab.rawID)
+            return .sessionBundle(activation.bundle)
         case .sessionClose(let sessionToken), .sessionEnsureClosed(let sessionToken):
             try await checkpointVisibleSessionIfNeeded(sessionToken: sessionToken, includeScrollback: true)
         case .layoutApply(let sessionToken, _), .layoutEnsureApplied(let sessionToken, _):
@@ -1496,7 +1568,10 @@ final class ShuttleAppModel: ObservableObject {
                     if let cwd = state.currentWorkingDirectory {
                         updatedTab.cwd = cwd
                     }
-                    updatedTab.runtimeStatus = .idle
+                    // Preserve .exited status — only reset to .idle for live runtimes.
+                    if updatedTab.runtimeStatus != .exited {
+                        updatedTab.runtimeStatus = .idle
+                    }
                 } else if let fallback = fallbackSelectedSession?.tabSnapshot(rawID: tab.rawID) {
                     updatedTab.title = fallback.title
                     updatedTab.cwd = fallback.cwd

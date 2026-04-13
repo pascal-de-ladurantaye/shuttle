@@ -66,6 +66,7 @@ public enum ShuttleControlCommand: Hashable, Sendable, Codable {
     case tabWait(sessionToken: String, tabToken: String, text: String, mode: ShuttleTabReadMode, maxLines: Int, timeoutMilliseconds: Int, afterCursorToken: String?)
     case tabMarkAttention(sessionToken: String, tabToken: String, message: String?)
     case tabClearAttention(sessionToken: String, tabToken: String)
+    case tabFocus(sessionToken: String, tabToken: String)
 
     public var name: String {
         switch self {
@@ -113,6 +114,8 @@ public enum ShuttleControlCommand: Hashable, Sendable, Codable {
             return "tab.mark_attention"
         case .tabClearAttention:
             return "tab.clear_attention"
+        case .tabFocus:
+            return "tab.focus"
         }
     }
 
@@ -136,7 +139,8 @@ public enum ShuttleControlCommand: Hashable, Sendable, Codable {
              .tabClose,
              .tabSend,
              .tabMarkAttention,
-             .tabClearAttention:
+             .tabClearAttention,
+             .tabFocus:
             return true
         }
     }
@@ -165,6 +169,7 @@ public enum ShuttleControlCommand: Hashable, Sendable, Codable {
             ShuttleControlCommand.tabWait(sessionToken: "", tabToken: "", text: "", mode: .scrollback, maxLines: 200, timeoutMilliseconds: 30_000, afterCursorToken: nil).name,
             ShuttleControlCommand.tabMarkAttention(sessionToken: "", tabToken: "", message: nil).name,
             ShuttleControlCommand.tabClearAttention(sessionToken: "", tabToken: "").name,
+            ShuttleControlCommand.tabFocus(sessionToken: "", tabToken: "").name,
         ]
     }
 }
@@ -325,6 +330,8 @@ public struct ShuttleControlCommandService: Sendable {
             let tab = try Self.resolveTab(in: existing, token: tabToken)
             try await store.clearTabAttention(sessionToken: sessionToken, tabRawID: tab.rawID)
             return .sessionBundle(try await store.sessionBundle(token: sessionToken))
+        case .tabFocus:
+            throw ShuttleError.unsupported("Tab focus requires the Shuttle app control plane")
         }
     }
 

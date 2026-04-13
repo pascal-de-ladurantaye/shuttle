@@ -293,7 +293,7 @@ public actor WorkspaceStore {
             throw ShuttleError.notFound(entity: "Session", token: token)
         }
         let existingBundle = try persistence.sessionBundle(id: existing.rawID)
-        let hasCheckpoint = existingBundle?.tabs.contains(where: { $0.runtimeStatus == .idle }) ?? false
+        let hasCheckpoint = existingBundle?.tabs.contains(where: { $0.runtimeStatus == .idle || $0.runtimeStatus == .exited }) ?? false
         let wasRestored = (existing.status == .restorable || existing.status == .closed) && hasCheckpoint
         try persistence.updateSessionLifecycle(
             sessionID: existing.rawID,
@@ -400,11 +400,14 @@ public actor WorkspaceStore {
         scrollback: String? = nil,
         updateScrollback: Bool = false
     ) throws {
+        // Don't overwrite .exited status — a late-arriving checkpoint flush
+        // from GhosttyCheckpointWriter must not resurrect a dead tab.
         try persistence.updateTabRestorationState(
             tabID: rawID,
             title: normalizedCheckpointValue(title),
             cwd: normalizedCheckpointValue(cwd),
-            runtimeStatus: .idle
+            runtimeStatus: .idle,
+            preserveExited: true
         )
         if updateScrollback {
             try ShuttleScrollbackReplayStore.persist(
@@ -413,6 +416,10 @@ public actor WorkspaceStore {
                 paths: paths
             )
         }
+    }
+
+    public func markTabExited(rawID: Int64) throws {
+        try persistence.updateTabRestorationState(tabID: rawID, runtimeStatus: .exited)
     }
 
     public func createSession(

@@ -31,6 +31,7 @@ public enum SplitDirection: String, CaseIterable, Codable, Sendable {
 public enum RuntimeStatus: String, CaseIterable, Codable, Sendable {
     case idle
     case placeholder
+    case exited
 }
 
 public enum ShuttleTabReadMode: String, CaseIterable, Codable, Sendable {

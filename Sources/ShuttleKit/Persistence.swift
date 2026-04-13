@@ -805,13 +805,20 @@ public final class PersistenceStore {
         }
     }
 
-    public func updateTabRestorationState(tabID: Int64, title: String? = nil, cwd: String? = nil, runtimeStatus: RuntimeStatus? = nil) throws {
+    public func updateTabRestorationState(tabID: Int64, title: String? = nil, cwd: String? = nil, runtimeStatus: RuntimeStatus? = nil, preserveExited: Bool = false) throws {
+        let runtimeStatusSQL: String
+        if preserveExited {
+            // Don't overwrite 'exited' — a late-arriving checkpoint must not resurrect a dead tab.
+            runtimeStatusSQL = "runtime_status = CASE WHEN runtime_status = 'exited' THEN 'exited' ELSE COALESCE(?, runtime_status) END"
+        } else {
+            runtimeStatusSQL = "runtime_status = COALESCE(?, runtime_status)"
+        }
         let statement = try database.prepare(
             """
             UPDATE tabs
             SET title = COALESCE(?, title),
                 cwd = COALESCE(?, cwd),
-                runtime_status = COALESCE(?, runtime_status)
+                \(runtimeStatusSQL)
             WHERE id = ?
             """
         )

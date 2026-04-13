@@ -359,6 +359,11 @@ final class GhosttyTabRuntimeRegistry: ObservableObject {
         return runtime.surfaceView.surfaceId == surfaceId
     }
 
+    /// Returns the tab rawID for the runtime whose surface matches the given surfaceId, or nil if no match.
+    func tabRawID(forSurfaceId surfaceId: UUID) -> Int64? {
+        runtimes.values.first(where: { $0.surfaceView.surfaceId == surfaceId })?.runtimeTabRawID
+    }
+
     @discardableResult
     func send(text: String, submit: Bool, to tabRawID: Int64) -> Bool {
         guard let runtime = runtimes.values.first(where: { $0.matches(tabRawID: tabRawID) }) else {
