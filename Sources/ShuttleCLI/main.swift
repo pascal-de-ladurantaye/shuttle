@@ -1495,6 +1495,7 @@ private struct CLI {
                 CLICommandSchema(path: "tab wait", summary: "Wait until text appears in a live tab and return the captured output", responseType: "tab_wait", idempotency: "idempotent_read", transport: "socket_launch_if_needed", arguments: [], options: ["--session <session>", "--tab <tab>", "--text <text>", "--mode <screen|scrollback>", "--lines <n>", "--timeout-ms <ms>", "--after-cursor <token>"]),
                 CLICommandSchema(path: "tab mark-attention", summary: "Mark a tab as needing attention", responseType: "session", idempotency: "idempotent_mutation", transport: "socket_or_local", arguments: [], options: ["--session <session>", "--tab <tab>", "--message <text>"]),
                 CLICommandSchema(path: "tab clear-attention", summary: "Clear the attention flag on a tab", responseType: "session", idempotency: "idempotent_mutation", transport: "socket_or_local", arguments: [], options: ["--session <session>", "--tab <tab>"]),
+                CLICommandSchema(path: "tab focus", summary: "Move UI focus to a specific tab", responseType: "session", idempotency: "idempotent_mutation", transport: "socket_launch_if_needed", arguments: [], options: ["--session <session>", "--tab <tab>"]),
                 CLICommandSchema(path: "control ping", summary: "Check control-plane reachability", responseType: "control_pong", idempotency: "idempotent_read", transport: "socket", arguments: [], options: []),
                 CLICommandSchema(path: "control capabilities", summary: "List control protocol capabilities and supported commands", responseType: "control_capabilities", idempotency: "idempotent_read", transport: "socket", arguments: [], options: []),
                 CLICommandSchema(path: "control schema", summary: "Dump the machine-readable CLI schema", responseType: "cli_schema", idempotency: "idempotent_read", transport: nil, arguments: [], options: []),
@@ -1557,6 +1558,7 @@ private struct CLI {
             "tab wait": "tab wait --tab <tab> --text <text> [--session <session>] [--mode screen|scrollback] [--lines <n>] [--timeout-ms <ms>] [--after-cursor <token>]",
             "tab mark-attention": "tab mark-attention [--tab <tab>] [--session <session>] [--message <text>]",
             "tab clear-attention": "tab clear-attention [--tab <tab>] [--session <session>]",
+            "tab focus": "tab focus --tab <tab> [--session <session>]",
             "control ping": "control ping",
             "control capabilities": "control capabilities",
             "control schema": "control schema [--json]",
@@ -1646,7 +1648,7 @@ private struct CLI {
               session list|show|context|open|reopen|new|ensure|rename|close|ensure-closed
               layout list|show|apply|ensure-applied|save-current
               pane list|show|split|resize
-              tab list|new|close|send|read|wait|mark-attention|clear-attention
+              tab list|new|close|send|read|wait|mark-attention|clear-attention|focus
               control ping|capabilities|schema|socket-path
               try new|new-session
               app bootstrap-hint
@@ -1660,6 +1662,7 @@ private struct CLI {
               tab wait --tab <tab> --text <text> [--mode screen|scrollback] [--lines <n>] [--timeout-ms <ms>] [--after-cursor <token>]
               tab mark-attention [--tab <tab>] [--session <session>] [--message <text>]
               tab clear-attention [--tab <tab>] [--session <session>]
+              tab focus --tab <tab> [--session <session>]
 
             Global flags:
               --json          machine-readable success/error envelopes

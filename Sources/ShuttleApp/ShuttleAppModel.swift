@@ -126,20 +126,28 @@ final class ShuttleAppModel: ObservableObject {
         guard let surfaceId else { return }
 
         let registry = GhosttyTabRuntimeRegistry.shared
-        guard let store, let bundle = sessionBundle else { return }
-        guard let tab = bundle.tabs.first(where: { registry.surfaceIdMatches(tabRawID: $0.rawID, surfaceId: surfaceId) }) else { return }
+        // Resolve the owning tab via the runtime registry (not sessionBundle)
+        // so close events from background sessions are not dropped.
+        guard let tabRawID = registry.tabRawID(forSurfaceId: surfaceId) else { return }
+        guard let store else { return }
+
+        // Remove the runtime entry so buildSessionSnapshot no longer
+        // classifies the tab as live/idle on subsequent snapshots.
+        registry.remove(runtimeKey: Tab.makeRef(tabRawID))
+        replayEnvironmentByTabRawID.removeValue(forKey: tabRawID)
 
         // Mark the tab as exited so the CLI can report it accurately.
         Task {
             do {
-                try await store.markTabExited(rawID: tab.rawID)
+                try await store.markTabExited(rawID: tabRawID)
             } catch {
                 // Best-effort — don't toast for background bookkeeping.
             }
 
-            // Update the in-memory bundle so the UI reflects the change immediately.
+            // Update the in-memory bundle so the UI reflects the change immediately
+            // (only when the closed tab belongs to the currently visible session).
             if var updatedBundle = self.sessionBundle,
-               let idx = updatedBundle.tabs.firstIndex(where: { $0.rawID == tab.rawID }) {
+               let idx = updatedBundle.tabs.firstIndex(where: { $0.rawID == tabRawID }) {
                 updatedBundle.tabs[idx].runtimeStatus = .exited
                 self.sessionBundle = updatedBundle
             }
@@ -388,10 +396,13 @@ final class ShuttleAppModel: ObservableObject {
                 )
             )
         case .tabFocus(let sessionToken, let tabToken):
-            let existing = try await controlService.store.sessionBundle(token: sessionToken)
-            let tab = try ShuttleControlCommandService.resolveTab(in: existing, token: tabToken)
+            persistSessionSnapshot(includeScrollback: true)
+            await GhosttyCheckpointWriter.shared.flushAll()
+            let activation = try await controlService.store.activateSession(token: sessionToken)
+            await applyControlSessionActivation(activation)
+            let tab = try ShuttleControlCommandService.resolveTab(in: activation.bundle, token: tabToken)
             selectTab(tab.rawID)
-            return .sessionBundle(existing)
+            return .sessionBundle(activation.bundle)
         case .sessionClose(let sessionToken), .sessionEnsureClosed(let sessionToken):
             try await checkpointVisibleSessionIfNeeded(sessionToken: sessionToken, includeScrollback: true)
         case .layoutApply(let sessionToken, _), .layoutEnsureApplied(let sessionToken, _):
@@ -1557,7 +1568,10 @@ final class ShuttleAppModel: ObservableObject {
                     if let cwd = state.currentWorkingDirectory {
                         updatedTab.cwd = cwd
                     }
-                    updatedTab.runtimeStatus = .idle
+                    // Preserve .exited status — only reset to .idle for live runtimes.
+                    if updatedTab.runtimeStatus != .exited {
+                        updatedTab.runtimeStatus = .idle
+                    }
                 } else if let fallback = fallbackSelectedSession?.tabSnapshot(rawID: tab.rawID) {
                     updatedTab.title = fallback.title
                     updatedTab.cwd = fallback.cwd
